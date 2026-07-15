@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="NGOKAF TRANS symbol">
+  <defs>
+    <linearGradient id="gold3d" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A57C00"/>
+      <stop offset="55%" stop-color="#8C6A00"/>
+      <stop offset="100%" stop-color="#705500"/>
+    </linearGradient>
+    <linearGradient id="goldHi" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#C9A227"/>
+      <stop offset="100%" stop-color="#8C6A00"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#2F2A24" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <!-- Route / itinerary -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M72 390 C160 350, 240 430, 340 368 S460 340, 448 318" stroke="#A57C00" stroke-width="14"/>
+    <path d="M88 412 C176 372, 248 448, 352 390 S460 370, 456 348" stroke="#8C6A00" stroke-width="8" opacity="0.85"/>
+    <circle cx="72" cy="390" r="10" fill="#8C6A00"/>
+    <circle cx="448" cy="318" r="10" fill="#A57C00"/>
+  </g>
+  <!-- Ticket accent (readable >= 64px) -->
+  <g transform="translate(368,118) rotate(12)" filter="url(#softShadow)">
+    <rect x="0" y="0" width="72" height="96" rx="8" fill="#F8F2E9" stroke="#8C6A00" stroke-width="4"/>
+    <circle cx="0" cy="48" r="8" fill="#FFFFFF"/>
+    <circle cx="72" cy="48" r="8" fill="#FFFFFF"/>
+    <rect x="14" y="18" width="44" height="8" rx="2" fill="#8C6A00" opacity="0.7"/>
+    <rect x="14" y="36" width="32" height="6" rx="2" fill="#2F2A24" opacity="0.25"/>
+    <rect x="14" y="50" width="38" height="6" rx="2" fill="#2F2A24" opacity="0.2"/>
+    <rect x="18" y="68" width="36" height="16" rx="3" fill="#8C6A00"/>
+  </g>
+  <!-- Bus body -->
+  <g filter="url(#softShadow)">
+    <!-- shadow plate -->
+    <ellipse cx="250" cy="352" rx="120" ry="18" fill="#2F2A24" opacity="0.18"/>
+    <!-- main hull -->
+    <path d="M118 210
+             C118 186, 136 168, 160 168
+             L300 168
+             C348 168, 372 188, 390 220
+             L402 252
+             C410 268, 408 286, 392 294
+             L168 294
+             C140 294, 118 274, 118 248 Z"
+          fill="url(#gold3d)"/>
+    <!-- cabin highlight -->
+    <path d="M130 214
+             C130 198, 144 186, 162 186
+             L288 186
+             C320 186, 344 200, 358 224
+             L366 242
+             L138 242
+             C130 242, 130 228, 130 214 Z"
+          fill="url(#goldHi)" opacity="0.55"/>
+    <!-- windshield -->
+    <path d="M302 188
+             C330 188, 350 202, 362 226
+             L348 226
+             C338 208, 322 198, 300 198
+             Z" fill="#2F2A24" opacity="0.85"/>
+    <path d="M308 196 L350 222 L340 222 C332 208, 320 200, 308 200 Z" fill="#F8F2E9" opacity="0.35"/>
+    <!-- side windows -->
+    <rect x="150" y="198" width="36" height="28" rx="6" fill="#2F2A24" opacity="0.75"/>
+    <rect x="196" y="198" width="36" height="28" rx="6" fill="#2F2A24" opacity="0.75"/>
+    <rect x="242" y="198" width="36" height="28" rx="6" fill="#2F2A24" opacity="0.75"/>
+    <!-- bumper -->
+    <rect x="130" y="278" width="250" height="16" rx="6" fill="#2F2A24" opacity="0.55"/>
+    <!-- wheels -->
+    <circle cx="178" cy="304" r="28" fill="#2F2A24"/>
+    <circle cx="178" cy="304" r="12" fill="#A57C00"/>
+    <circle cx="330" cy="304" r="28" fill="#2F2A24"/>
+    <circle cx="330" cy="304" r="12" fill="#A57C00"/>
+    <!-- headlight -->
+    <circle cx="392" cy="248" r="10" fill="#F8F2E9"/>
+    <circle cx="392" cy="248" r="5" fill="#A57C00"/>
+    <!-- NG monogram badge -->
+    <rect x="148" y="248" width="56" height="26" rx="6" fill="#2F2A24"/>
+    <text x="176" y="267" text-anchor="middle" font-family="Segoe UI, Arial, Helvetica, sans-serif"
+          font-size="16" font-weight="700" fill="#A57C00" letter-spacing="1">NG</text>
+  </g>
+</svg>

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="NGOKAF TRANS circle icon">
+  <defs>
+    <linearGradient id="gold3d" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A57C00"/>
+      <stop offset="55%" stop-color="#8C6A00"/>
+      <stop offset="100%" stop-color="#705500"/>
+    </linearGradient>
+    <linearGradient id="goldHi" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#C9A227"/>
+      <stop offset="100%" stop-color="#8C6A00"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3A342C"/>
+      <stop offset="100%" stop-color="#2F2A24"/>
+    </linearGradient>
+    <clipPath id="circ">
+      <circle cx="256" cy="256" r="240"/>
+    </clipPath>
+  </defs>
+  <circle cx="256" cy="256" r="240" fill="url(#panel)"/>
+  <g clip-path="url(#circ)">
+    <circle cx="180" cy="140" r="160" fill="#FFFFFF" opacity="0.05"/>
+  </g>
+  <g transform="translate(20,12) scale(0.92)">
+    <g fill="none" stroke-linecap="round">
+      <path d="M72 390 C160 350, 240 430, 340 368 S460 340, 448 318" stroke="#A57C00" stroke-width="14"/>
+      <path d="M88 412 C176 372, 248 448, 352 390 S460 370, 456 348" stroke="#F8F2E9" stroke-width="7" opacity="0.55"/>
+      <circle cx="72" cy="390" r="10" fill="#A57C00"/>
+      <circle cx="448" cy="318" r="10" fill="#F8F2E9"/>
+    </g>
+    <g transform="translate(368,118) rotate(12)">
+      <rect x="0" y="0" width="72" height="96" rx="8" fill="#F8F2E9"/>
+      <circle cx="0" cy="48" r="8" fill="#2F2A24"/>
+      <circle cx="72" cy="48" r="8" fill="#2F2A24"/>
+      <rect x="14" y="18" width="44" height="8" rx="2" fill="#8C6A00"/>
+      <rect x="18" y="68" width="36" height="16" rx="3" fill="#8C6A00"/>
+    </g>
+    <ellipse cx="250" cy="352" rx="120" ry="18" fill="#000000" opacity="0.25"/>
+    <path d="M118 210 C118 186, 136 168, 160 168 L300 168 C348 168, 372 188, 390 220 L402 252 C410 268, 408 286, 392 294 L168 294 C140 294, 118 274, 118 248 Z" fill="url(#gold3d)"/>
+    <path d="M130 214 C130 198, 144 186, 162 186 L288 186 C320 186, 344 200, 358 224 L366 242 L138 242 C130 242, 130 228, 130 214 Z" fill="url(#goldHi)" opacity="0.5"/>
+    <path d="M302 188 C330 188, 350 202, 362 226 L348 226 C338 208, 322 198, 300 198 Z" fill="#1A1714"/>
+    <rect x="150" y="198" width="36" height="28" rx="6" fill="#1A1714"/>
+    <rect x="196" y="198" width="36" height="28" rx="6" fill="#1A1714"/>
+    <rect x="242" y="198" width="36" height="28" rx="6" fill="#1A1714"/>
+    <rect x="130" y="278" width="250" height="16" rx="6" fill="#1A1714" opacity="0.65"/>
+    <circle cx="178" cy="304" r="28" fill="#1A1714"/>
+    <circle cx="178" cy="304" r="12" fill="#A57C00"/>
+    <circle cx="330" cy="304" r="28" fill="#1A1714"/>
+    <circle cx="330" cy="304" r="12" fill="#A57C00"/>
+    <circle cx="392" cy="248" r="10" fill="#F8F2E9"/>
+    <rect x="148" y="248" width="56" height="26" rx="6" fill="#1A1714"/>
+    <text x="176" y="267" text-anchor="middle" font-family="Segoe UI, Arial, Helvetica, sans-serif"
+          font-size="16" font-weight="700" fill="#A57C00" letter-spacing="1">NG</text>
+  </g>
+</svg>

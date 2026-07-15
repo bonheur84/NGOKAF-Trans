@@ -1,0 +1,31 @@
+CONTRAT DE LICENCE UTILISATEUR FINAL — NGOKAF TRANS
+
+Copyright (c) NGOKAF. Tous droits réservés.
+
+En installant ou en utilisant le logiciel NGOKAF TRANS, vous acceptez les conditions suivantes :
+
+1. LICENCE D'UTILISATION
+   Ce logiciel est concédé sous licence à l'agence utilisatrice pour ses opérations
+   internes de gestion de billets et de bagages. La redistribution non autorisée
+   est interdite.
+
+2. RESTRICTIONS
+   Vous ne pouvez pas : modifier, décompiler, désassembler le logiciel à des fins
+   autres que l'interopérabilité légalement autorisée ; revendre le logiciel sans
+   accord écrit.
+
+3. DONNÉES
+   Les données de billets, bagages et utilisateurs sont stockées dans votre base
+   MySQL. Vous êtes responsable de la sécurité, des sauvegardes et de la conformité
+   locale.
+
+4. ABSENCE DE GARANTIE
+   Le logiciel est fourni « en l'état », sans garantie d'absence d'erreurs.
+   NGOKAF ne saurait être tenu responsable des pertes de données résultant d'une
+   mauvaise configuration MySQL ou de l'absence de sauvegardes.
+
+5. SUPPORT
+   Pour toute assistance, contactez l'administrateur de votre agence ou le
+   support NGOKAF.
+
+En cliquant sur « J'accepte », vous confirmez avoir lu et accepté ces conditions.

@@ -1,0 +1,25 @@
+[database]
+host = localhost
+port = 3306
+user = root
+password = your_password
+name = ngokaf_trans
+
+[agency]
+name = NGOKAF TRANS
+address = BP 1245 - Douala, Cameroun
+phone = (+237) 6XX XX XX XX
+terminal = TERMINAL PRINCIPAL
+
+[session]
+timeout_minutes = 30
+
+[luggage]
+base_fee = 2500
+weight_rate = 200
+
+[paths]
+logs = logs
+backups = backups
+reports = reports
+temp = temp
