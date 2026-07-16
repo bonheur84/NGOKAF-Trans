@@ -1,13 +1,12 @@
 #Requires -Version 5.1
-<#
-.SYNOPSIS
-  Build NGOKAF_TRANS.exe (PyInstaller) then Setup_Ngokaf_Trans.exe (Inno Setup).
-#>
+#
+# Build NGOKAF_TRANS.exe (PyInstaller) then Setup_Ngokaf_Trans.exe (Inno Setup).
+#
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
 Write-Host "============================================"
-Write-Host "  NGOKAF TRANS — Build + Installateur"
+Write-Host "  NGOKAF TRANS - Build + Installateur"
 Write-Host "============================================"
 
 function Find-ISCC {
@@ -31,10 +30,10 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
 Write-Host "`n[1/5] pip install..."
 python -m pip install -r requirements.txt
 
-Write-Host "`n[2/5] Icône..."
+Write-Host "`n[2/5] Icone..."
 python scripts\make_icon.py
 if (-not (Test-Path "assets\icons\ngokaf.ico")) {
-    Write-Error "Icône manquante: assets\icons\ngokaf.ico"
+    Write-Error "Icone manquante: assets\icons\ngokaf.ico"
 }
 
 Write-Host "`n[3/5] Nettoyage..."
@@ -53,14 +52,14 @@ $iscc = Find-ISCC
 if (-not $iscc) {
     Write-Host ""
     Write-Host "[ERREUR] Inno Setup 6 introuvable (ISCC.exe)." -ForegroundColor Red
-    Write-Host "Téléchargez: https://jrsoftware.org/isdl.php"
+    Write-Host "Telechargez: https://jrsoftware.org/isdl.php"
     Write-Host "PyInstaller OK: $exe"
     exit 1
 }
 Write-Host "ISCC: $iscc"
 & $iscc "installer\setup.iss"
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Échec compilation Inno Setup (code $LASTEXITCODE)."
+    Write-Error "Echec compilation Inno Setup."
 }
 
 $setup = "installer\Output\Setup_Ngokaf_Trans.exe"
@@ -70,5 +69,5 @@ Write-Host "  BUILD TERMINE"
 Write-Host "============================================"
 Write-Host "  App   : $exe"
 Write-Host "  Setup : $setup"
-Write-Host '  Python n'"'"'est PAS requis sur les postes clients.'
+Write-Host "  Python ne sera pas requis sur les clients."
 Write-Host "============================================"

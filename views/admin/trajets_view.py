@@ -28,7 +28,10 @@ from resources import theme as T
 from services import bus_service, driver_service
 from services.session_store import current_session
 from utils.formatters import format_fc
-from views.admin.widgets import style_table, page_toolbar, secondary_btn
+from views.admin.widgets import (
+    style_table, page_toolbar, secondary_btn,
+    edit_action_btn, delete_action_btn, toggle_action_btn
+)
 
 
 class RouteDialog(QDialog):
@@ -37,20 +40,11 @@ class RouteDialog(QDialog):
         self.route = route
         self.setWindowTitle("Modifier le trajet" if route else "Nouveau trajet")
         self.setMinimumWidth(420)
-        self.setStyleSheet(f"background:{T.BG_MAIN};")
         form = QFormLayout(self)
         form.setSpacing(10)
 
         self.depart = QLineEdit()
         self.arrivee = QLineEdit()
-        self.h_dep = QTimeEdit()
-        self.h_dep.setDisplayFormat("HH:mm")
-        self.h_arr = QTimeEdit()
-        self.h_arr.setDisplayFormat("HH:mm")
-        self.h_arr.setSpecialValueText("—")
-        self.distance = QDoubleSpinBox()
-        self.distance.setRange(0, 5000)
-        self.distance.setSuffix(" km")
         self.prix = QDoubleSpinBox()
         self.prix.setRange(0, 10_000_000)
         self.prix.setSuffix(" FC")
@@ -74,13 +68,6 @@ class RouteDialog(QDialog):
         if route:
             self.depart.setText(route.ville_depart)
             self.arrivee.setText(route.ville_arrivee)
-            self.h_dep.setTime(QTime(route.heure_depart.hour, route.heure_depart.minute))
-            if route.heure_arrivee:
-                self.h_arr.setTime(
-                    QTime(route.heure_arrivee.hour, route.heure_arrivee.minute)
-                )
-            if route.distance_km is not None:
-                self.distance.setValue(float(route.distance_km))
             if route.prix_indicatif is not None:
                 self.prix.setValue(float(route.prix_indicatif))
             idx = self.bus.findData(route.bus_id)
@@ -93,13 +80,13 @@ class RouteDialog(QDialog):
 
         form.addRow("Ville départ", self.depart)
         form.addRow("Ville arrivée", self.arrivee)
-        form.addRow("Heure départ", self.h_dep)
-        form.addRow("Heure arrivée", self.h_arr)
-        form.addRow("Distance", self.distance)
         form.addRow("Prix", self.prix)
         form.addRow("Bus", self.bus)
         form.addRow("Conducteur", self.driver)
         form.addRow("Statut", self.statut)
+
+        # Auto-assign driver based on bus selection
+        self.bus.currentIndexChanged.connect(self._on_bus_changed)
 
         row = QHBoxLayout()
         cancel = secondary_btn("Annuler")
@@ -112,15 +99,32 @@ class RouteDialog(QDialog):
         row.addWidget(ok)
         form.addRow(row)
 
+    def _on_bus_changed(self) -> None:
+        bus_id = self.bus.currentData()
+        if not bus_id:
+            self.driver.setCurrentIndex(0)
+            return
+
+        from models.driver import Driver
+        session = get_session()
+        try:
+            d = session.query(Driver).filter(Driver.bus_id == bus_id, Driver.statut == "actif").first()
+            if d:
+                idx = self.driver.findData(d.id)
+                if idx >= 0:
+                    self.driver.setCurrentIndex(idx)
+            else:
+                self.driver.setCurrentIndex(0)
+        finally:
+            session.close()
+
     def values(self) -> dict:
-        qt = self.h_dep.time()
-        h_arr = self.h_arr.time()
         return {
             "ville_depart": self.depart.text().strip(),
             "ville_arrivee": self.arrivee.text().strip(),
-            "heure_depart": time(qt.hour(), qt.minute()),
-            "heure_arrivee": time(h_arr.hour(), h_arr.minute()),
-            "distance_km": Decimal(str(self.distance.value())) or None,
+            "heure_depart": time(0, 0),
+            "heure_arrivee": None,
+            "distance_km": None,
             "prix_indicatif": Decimal(str(int(self.prix.value()))),
             "bus_id": self.bus.currentData(),
             "driver_id": self.driver.currentData(),
@@ -162,8 +166,9 @@ class TrajetsView(QWidget):
         )
         style_table(self.table)
         self.table.horizontalHeader().setSectionResizeMode(
-            7, QHeaderView.ResizeMode.ResizeToContents
+            7, QHeaderView.ResizeMode.Interactive
         )
+        self.table.setColumnWidth(7, 220)
         lay.addWidget(self.table, 1)
 
     def refresh(self) -> None:
@@ -200,11 +205,11 @@ class TrajetsView(QWidget):
         h = QHBoxLayout(w)
         h.setContentsMargins(4, 2, 4, 2)
         h.setSpacing(4)
-        edit = secondary_btn("Édit.")
+        edit = edit_action_btn("Édit.")
         edit.clicked.connect(lambda: self._edit(route_id))
-        toggle = secondary_btn("Off" if statut == "actif" else "On")
+        toggle = toggle_action_btn("Off" if statut == "actif" else "On", active=(statut == "actif"))
         toggle.clicked.connect(lambda: self._toggle(route_id, statut))
-        delete = secondary_btn("Suppr.")
+        delete = delete_action_btn("Suppr.")
         delete.clicked.connect(lambda: self._delete(route_id))
         h.addWidget(edit)
         h.addWidget(toggle)

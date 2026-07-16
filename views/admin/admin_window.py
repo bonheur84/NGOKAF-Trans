@@ -169,7 +169,8 @@ class AdminWindow(QMainWindow):
         layout.addWidget(sidebar)
 
         main = QWidget()
-        main.setStyleSheet(f"background:{T.BG_MAIN};")
+        main.setObjectName("mainAdminArea")
+        main.setStyleSheet(f"QWidget#mainAdminArea {{ background-color: {T.BG_MAIN}; }}")
         ml = QVBoxLayout(main)
         ml.setContentsMargins(T.MARGIN_MAIN, 10, T.MARGIN_MAIN, T.MARGIN_MAIN)
         ml.setSpacing(12)

@@ -34,7 +34,7 @@ class Ticket(Base):
     route = relationship("Route", back_populates="tickets")
     bus = relationship("Bus", back_populates="tickets")
     cashier = relationship("User", back_populates="tickets")
-    cancellation = relationship("TicketCancellation", back_populates="ticket", uselist=False)
+    cancellation = relationship("TicketCancellation", back_populates="ticket", uselist=False, cascade="all, delete-orphan")
 
 
 class TicketCancellation(Base):

@@ -1,33 +1,96 @@
-"""Admin Paramètres — agence, impression, backup, MDP."""
+"""Admin Paramètres — agence, sauvegarde, MDP."""
 from __future__ import annotations
 
-from pathlib import Path
 
+
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QSpinBox,
-    QComboBox,
     QPushButton,
-    QFileDialog,
+
     QMessageBox,
-    QFormLayout,
     QScrollArea,
-    QGroupBox,
+    QFrame,
+    QSizePolicy,
+    QSpacerItem,
 )
 
 from config.settings import settings
 from database.session import get_session
-from models.audit import AuditLog
 from resources import theme as T
-from services import settings_service, backup_service, user_admin_service, notification_service
-from services.audit_service import log_audit
+from services import settings_service, user_admin_service, notification_service
 from services.session_store import current_session
-from views.admin.widgets import secondary_btn, style_table
-from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
+from utils.icons import fa_icon
+from views.widgets.card import Card
+
+
+def _section_title(fa_name: str, text: str) -> QWidget:
+    container = QWidget()
+    h = QHBoxLayout(container)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(8)
+    icon_lbl = QLabel()
+    icon_lbl.setPixmap(fa_icon(fa_name, color=T.PRIMARY_ALT).pixmap(QSize(15, 15)))
+    h.addWidget(icon_lbl)
+    txt = QLabel(text)
+    txt.setStyleSheet(
+        f"color:{T.PRIMARY_ALT}; font-size:13px; font-weight:700;"
+    )
+    h.addWidget(txt)
+    h.addStretch()
+    # Underline separator below
+    sep = QFrame()
+    sep.setFrameShape(QFrame.Shape.HLine)
+    sep.setStyleSheet(f"color:{T.PRIMARY}33; margin-top:2px;")
+    wrap = QWidget()
+    v = QVBoxLayout(wrap)
+    v.setContentsMargins(0, 0, 0, 0)
+    v.setSpacing(4)
+    v.addWidget(container)
+    v.addWidget(sep)
+    return wrap
+
+
+def _field_label(text: str) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setStyleSheet(f"color:{T.TEXT_SECONDARY}; font-size:11px; font-weight:600;")
+    lbl.setFixedWidth(160)
+    return lbl
+
+
+def _row(label: str, widget: QWidget) -> QHBoxLayout:
+    h = QHBoxLayout()
+    h.setSpacing(12)
+    h.addWidget(_field_label(label))
+    h.addWidget(widget, 1)
+    return h
+
+
+def _input(placeholder: str = "", readonly: bool = False) -> QLineEdit:
+    w = QLineEdit()
+    w.setPlaceholderText(placeholder)
+    if readonly:
+        w.setReadOnly(True)
+    return w
+
+
+def _pwd_input(placeholder: str = "") -> QLineEdit:
+    w = QLineEdit()
+    w.setPlaceholderText(placeholder)
+    w.setEchoMode(QLineEdit.EchoMode.Password)
+    return w
+
+
+def _separator() -> QFrame:
+    f = QFrame()
+    f.setFrameShape(QFrame.Shape.HLine)
+    f.setStyleSheet(f"color:{T.BORDER}; margin:4px 0;")
+    return f
 
 
 class ParametresView(QWidget):
@@ -38,100 +101,90 @@ class ParametresView(QWidget):
     def _build(self) -> None:
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("border:none;")
+
         body = QWidget()
         lay = QVBoxLayout(body)
-        lay.setSpacing(14)
+        lay.setContentsMargins(24, 20, 24, 24)
+        lay.setSpacing(18)
 
-        title = QLabel("Paramètres")
-        title.setStyleSheet(
-            f"color:{T.PRIMARY_ALT}; font-size:{T.SIZE_CARD_TITLE}px; font-weight:700;"
+        # ── Page header ──────────────────────────────────────────────
+        header = QLabel("Paramètres")
+        header.setStyleSheet(
+            f"color:{T.PRIMARY_ALT}; font-size:22px; font-weight:700; margin-bottom:4px;"
         )
-        lay.addWidget(title)
+        lay.addWidget(header)
 
-        agency = QGroupBox("Profil agence")
-        form = QFormLayout(agency)
-        self.agency_name = QLineEdit()
-        self.agency_address = QLineEdit()
-        self.agency_phone = QLineEdit()
-        self.terminal_name = QLineEdit()
-        self.currency = QLineEdit("FC")
-        self.currency.setReadOnly(True)
-        self.tva = QLineEdit()
-        self.prefix = QLineEdit()
-        form.addRow("Nom agence", self.agency_name)
-        form.addRow("Adresse", self.agency_address)
-        form.addRow("Téléphone", self.agency_phone)
-        form.addRow("Terminal", self.terminal_name)
-        form.addRow("Devise", self.currency)
-        form.addRow("TVA (%)", self.tva)
-        form.addRow("Préfixe tickets", self.prefix)
-        lay.addWidget(agency)
+        sub = QLabel("Configurez le profil de votre agence, la sécurité et les sauvegardes.")
+        sub.setStyleSheet(f"color:{T.TEXT_SECONDARY}; font-size:12px;")
+        lay.addWidget(sub)
 
-        print_box = QGroupBox("Impression")
-        pf = QFormLayout(print_box)
-        self.ticket_width = QComboBox()
-        self.ticket_width.addItems(["80", "58"])
-        self.luggage_width = QComboBox()
-        self.luggage_width.addItems(["58", "80"])
-        pf.addRow("Largeur ticket (mm)", self.ticket_width)
-        pf.addRow("Largeur étiquette bagage (mm)", self.luggage_width)
-        lay.addWidget(print_box)
+        lay.addWidget(_separator())
 
-        session_box = QGroupBox("Session & bagages")
-        sf = QFormLayout(session_box)
-        self.timeout = QSpinBox()
-        self.timeout.setRange(5, 240)
-        self.timeout.setSuffix(" min")
-        self.luggage_base = QLineEdit()
-        self.luggage_rate = QLineEdit()
-        sf.addRow("Timeout session", self.timeout)
-        sf.addRow("Frais base bagage (FC)", self.luggage_base)
-        sf.addRow("Tarif / kg (FC)", self.luggage_rate)
-        lay.addWidget(session_box)
+        # ── 1. Profil agence ─────────────────────────────────────────
+        agency_card = Card(padding=18)
+        agency_card.layout.setSpacing(12)
+        agency_card.layout.addWidget(_section_title("building", "Profil agence"))
 
-        pwd_box = QGroupBox("Mot de passe administrateur")
-        pwd_f = QFormLayout(pwd_box)
-        self.old_pwd = QLineEdit()
-        self.old_pwd.setEchoMode(QLineEdit.EchoMode.Password)
-        self.new_pwd = QLineEdit()
-        self.new_pwd.setEchoMode(QLineEdit.EchoMode.Password)
-        self.new_pwd2 = QLineEdit()
-        self.new_pwd2.setEchoMode(QLineEdit.EchoMode.Password)
-        pwd_f.addRow("Actuel", self.old_pwd)
-        pwd_f.addRow("Nouveau", self.new_pwd)
-        pwd_f.addRow("Confirmer", self.new_pwd2)
-        change_pwd = QPushButton("Changer le mot de passe")
-        change_pwd.setObjectName("secondaryBtn")
-        change_pwd.clicked.connect(self._change_pwd)
-        pwd_f.addRow(change_pwd)
-        lay.addWidget(pwd_box)
+        self.agency_name    = _input("Ex: NGOKAF TRANS")
+        self.agency_address = _input("Ex: Douala, Cameroun")
+        self.agency_phone   = _input("Ex: +237 6XX XXX XXX")
+        self.terminal_name  = _input("Ex: TERMINAL PRINCIPAL")
+        self.currency       = _input(readonly=True)
+        self.prefix         = _input("Ex: TK-")
 
-        backup_box = QGroupBox("Sauvegarde MySQL")
-        bf = QHBoxLayout(backup_box)
-        bak = QPushButton("Créer une sauvegarde")
-        bak.setObjectName("primaryBtn")
-        bak.clicked.connect(self._backup)
-        rest = secondary_btn("Restaurer…")
-        rest.clicked.connect(self._restore)
-        bf.addWidget(bak)
-        bf.addWidget(rest)
-        bf.addStretch()
-        lay.addWidget(backup_box)
+        for label, widget in [
+            ("Nom de l'agence",  self.agency_name),
+            ("Adresse",          self.agency_address),
+            ("Téléphone",        self.agency_phone),
+            ("Terminal",         self.terminal_name),
+            ("Devise",           self.currency),
+            ("Préfixe tickets",  self.prefix),
+        ]:
+            agency_card.layout.addLayout(_row(label, widget))
 
-        save = QPushButton("Enregistrer les paramètres")
-        save.setObjectName("primaryBtn")
-        save.clicked.connect(self._save)
-        lay.addWidget(save)
+        lay.addWidget(agency_card)
 
-        lay.addWidget(QLabel("Journal d'audit récent"))
-        self.audit = QTableWidget(0, 5)
-        self.audit.setHorizontalHeaderLabels(["Date", "Action", "Entité", "ID", "Détails"])
-        style_table(self.audit)
-        self.audit.setMaximumHeight(220)
-        lay.addWidget(self.audit)
+        # ── 2. Mot de passe administrateur ──────────────────────────
+        pwd_card = Card(padding=18)
+        pwd_card.layout.setSpacing(12)
+        pwd_card.layout.addWidget(_section_title("lock", "Sécurité"))
+
+        self.old_pwd  = _pwd_input("Mot de passe actuel")
+        self.new_pwd  = _pwd_input("Nouveau mot de passe")
+        self.new_pwd2 = _pwd_input("Confirmer le mot de passe")
+
+        for label, widget in [
+            ("Mot de passe actuel",   self.old_pwd),
+            ("Nouveau mot de passe",  self.new_pwd),
+            ("Confirmer",             self.new_pwd2),
+        ]:
+            pwd_card.layout.addLayout(_row(label, widget))
+
+        change_pwd_btn = QPushButton("Changer le mot de passe")
+        change_pwd_btn.setObjectName("secondaryBtn")
+        change_pwd_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        change_pwd_btn.clicked.connect(self._change_pwd)
+        pwd_card.layout.addWidget(change_pwd_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+        lay.addWidget(pwd_card)
+
+
+
+        # ── Save button ──────────────────────────────────────────────
+        lay.addItem(QSpacerItem(0, 8, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed))
+
+        save_btn = QPushButton("  Enregistrer les paramètres")
+        save_btn.setObjectName("primaryBtn")
+        save_btn.setFixedHeight(42)
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.clicked.connect(self._save)
+        lay.addWidget(save_btn)
+
+        lay.addStretch()
 
         scroll.setWidget(body)
         outer.addWidget(scroll)
@@ -144,33 +197,8 @@ class ParametresView(QWidget):
             self.agency_address.setText(g(session, "agency_address", settings.AGENCY_ADDRESS))
             self.agency_phone.setText(g(session, "agency_phone", settings.AGENCY_PHONE))
             self.terminal_name.setText(g(session, "terminal_name", settings.TERMINAL_NAME))
-            self.tva.setText(g(session, "tva_percent", "0"))
+            self.currency.setText(g(session, "currency", "FC"))
             self.prefix.setText(g(session, "ticket_prefix", "TK-"))
-            self.ticket_width.setCurrentText(g(session, "ticket_width_mm", "80"))
-            self.luggage_width.setCurrentText(g(session, "luggage_width_mm", "58"))
-            self.timeout.setValue(int(g(session, "session_timeout_minutes", "30") or "30"))
-            self.luggage_base.setText(g(session, "luggage_base_fee", str(settings.LUGGAGE_BASE_FEE)))
-            self.luggage_rate.setText(g(session, "luggage_weight_rate", str(settings.LUGGAGE_WEIGHT_RATE)))
-
-            logs = (
-                session.query(AuditLog)
-                .order_by(AuditLog.created_at.desc())
-                .limit(40)
-                .all()
-            )
-            self.audit.setRowCount(0)
-            for log in logs:
-                row = self.audit.rowCount()
-                self.audit.insertRow(row)
-                vals = [
-                    log.created_at.strftime("%d/%m/%Y %H:%M"),
-                    log.action,
-                    log.entity,
-                    str(log.entity_id or ""),
-                    (log.details or "")[:80],
-                ]
-                for c, v in enumerate(vals):
-                    self.audit.setItem(row, c, QTableWidgetItem(v))
         finally:
             session.close()
 
@@ -181,25 +209,23 @@ class ParametresView(QWidget):
         session = get_session()
         try:
             pairs = {
-                "agency_name": self.agency_name.text().strip(),
+                "agency_name":    self.agency_name.text().strip(),
                 "agency_address": self.agency_address.text().strip(),
-                "agency_phone": self.agency_phone.text().strip(),
-                "terminal_name": self.terminal_name.text().strip(),
-                "currency": "FC",
-                "tva_percent": self.tva.text().strip() or "0",
-                "ticket_prefix": self.prefix.text().strip() or "TK-",
-                "ticket_width_mm": self.ticket_width.currentText(),
-                "luggage_width_mm": self.luggage_width.currentText(),
-                "session_timeout_minutes": str(self.timeout.value()),
-                "luggage_base_fee": self.luggage_base.text().strip(),
-                "luggage_weight_rate": self.luggage_rate.text().strip(),
+                "agency_phone":   self.agency_phone.text().strip(),
+                "terminal_name":  self.terminal_name.text().strip(),
+                "currency":       "FC",
+                "ticket_prefix":  self.prefix.text().strip() or "TK-",
             }
             for k, v in pairs.items():
                 settings_service.set_setting(session, k, v)
-            log_audit(session, "update", "settings", None, self._actor(), pairs)
-            notification_service.notify(session, "Paramètres mis à jour", "Les paramètres ont été enregistrés avec succès.", self._actor())
+            notification_service.notify(
+                session,
+                "Paramètres mis à jour",
+                "Les paramètres ont été enregistrés avec succès.",
+                self._actor(),
+            )
             session.commit()
-            QMessageBox.information(self, "Paramètres", "Enregistré.")
+            QMessageBox.information(self, "Paramètres", "Enregistré avec succès ✓")
             self.refresh()
         except Exception as e:
             session.rollback()
@@ -209,17 +235,16 @@ class ParametresView(QWidget):
 
     def _change_pwd(self) -> None:
         if self.new_pwd.text() != self.new_pwd2.text():
-            QMessageBox.warning(self, "Mot de passe", "Confirmation différente.")
+            QMessageBox.warning(self, "Mot de passe", "Les mots de passe ne correspondent pas.")
             return
         if len(self.new_pwd.text()) < 6:
-            QMessageBox.warning(self, "Mot de passe", "Au moins 6 caractères.")
+            QMessageBox.warning(self, "Mot de passe", "Le mot de passe doit contenir au moins 6 caractères.")
             return
         user = current_session.user
         if not user:
             return
         session = get_session()
         try:
-            # Re-fetch bound instance
             admin = user_admin_service.get_user(session, user.id)
             user_admin_service.change_admin_password(
                 session, admin, self.old_pwd.text(), self.new_pwd.text()
@@ -228,50 +253,10 @@ class ParametresView(QWidget):
             self.old_pwd.clear()
             self.new_pwd.clear()
             self.new_pwd2.clear()
-            QMessageBox.information(self, "Mot de passe", "Mot de passe modifié.")
+            QMessageBox.information(self, "Mot de passe", "Mot de passe modifié avec succès ✓")
         except Exception as e:
             session.rollback()
             QMessageBox.critical(self, "Erreur", str(e))
         finally:
             session.close()
 
-    def _backup(self) -> None:
-        session = get_session()
-        try:
-            path = backup_service.backup_database()
-            log_audit(session, "backup", "database", None, self._actor(), {"path": str(path)})
-            notification_service.notify_backup_success(session, path.name, self._actor())
-            session.commit()
-            QMessageBox.information(self, "Backup", f"Sauvegarde créée :\n{path}")
-        except Exception as e:
-            session.rollback()
-            notification_service.notify_backup_failed(session, str(e), self._actor())
-            QMessageBox.critical(self, "Backup", str(e))
-        finally:
-            session.close()
-
-    def _restore(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Restaurer backup", str(settings.BACKUPS), "SQL (*.sql)"
-        )
-        if not path:
-            return
-        if QMessageBox.question(
-            self,
-            "Restaurer",
-            "Cette opération écrase la base actuelle. Continuer ?",
-        ) != QMessageBox.StandardButton.Yes:
-            return
-        session = get_session()
-        try:
-            backup_service.restore_database(Path(path))
-            log_audit(session, "restore", "database", None, self._actor(), {"path": path})
-            notification_service.notify(session, "Restauration terminée", "La base de données a été restaurée avec succès.", self._actor())
-            session.commit()
-            QMessageBox.information(self, "Restore", "Restauration terminée. Redémarrez l'application.")
-        except Exception as e:
-            session.rollback()
-            notification_service.notify_critical_error(session, f"Échec restauration : {str(e)}", self._actor())
-            QMessageBox.critical(self, "Restore", str(e))
-        finally:
-            session.close()

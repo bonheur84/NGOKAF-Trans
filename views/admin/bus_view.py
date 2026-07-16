@@ -25,9 +25,12 @@ from PySide6.QtWidgets import (
 
 from database.session import get_session
 from resources import theme as T
-from services import bus_service
+from services import bus_service, driver_service
 from services.session_store import current_session
-from views.admin.widgets import style_table, page_toolbar, secondary_btn
+from views.admin.widgets import (
+    style_table, page_toolbar, secondary_btn,
+    edit_action_btn, delete_action_btn, toggle_action_btn
+)
 
 
 class BusDialog(QDialog):
@@ -37,58 +40,55 @@ class BusDialog(QDialog):
         self.photo_path = bus.photo_path if bus else None
         self.setWindowTitle("Modifier le bus" if bus else "Nouveau bus")
         self.setMinimumWidth(420)
-        self.setStyleSheet(f"background:{T.BG_MAIN};")
         form = QFormLayout(self)
 
         self.code = QLineEdit()
         self.plaque = QLineEdit()
-        self.marque = QLineEdit()
-        self.modele = QLineEdit()
-        self.annee = QSpinBox()
-        self.annee.setRange(1990, 2100)
-        self.annee.setValue(2020)
-        self.couleur = QLineEdit()
         self.capacite = QSpinBox()
         self.capacite.setRange(10, 80)
         self.capacite.setValue(60)
         self.layout_c = QComboBox()
         self.layout_c.addItems(["2-2", "2-1", "1-2"])
-        self.date_achat = QDateEdit()
-        self.date_achat.setCalendarPopup(True)
-        self.date_achat.setDate(QDate.currentDate())
+        self.driver = QComboBox()
+        self.driver.addItem("— Aucun —", None)
         self.statut = QComboBox()
         self.statut.addItems(["actif", "maintenance", "inactif"])
         self.photo_lbl = QLabel("Aucune photo")
         photo_btn = secondary_btn("Choisir photo…")
         photo_btn.clicked.connect(self._pick_photo)
 
+        session = get_session()
+        try:
+            for d in driver_service.list_drivers(session, statut="actif"):
+                self.driver.addItem(d.full_name, d.id)
+        finally:
+            session.close()
+
         if bus:
             self.code.setText(bus.code)
             self.plaque.setText(bus.plaque or "")
-            self.marque.setText(bus.marque or "")
-            self.modele.setText(bus.modele or "")
-            if bus.annee:
-                self.annee.setValue(bus.annee)
-            self.couleur.setText(bus.couleur or "")
             self.capacite.setValue(bus.capacite)
             self.layout_c.setCurrentText(bus.layout or "2-2")
-            if bus.date_achat:
-                self.date_achat.setDate(
-                    QDate(bus.date_achat.year, bus.date_achat.month, bus.date_achat.day)
-                )
             self.statut.setCurrentText(bus.statut)
             if bus.photo_path:
                 self.photo_lbl.setText(bus.photo_path)
 
+            session = get_session()
+            try:
+                from models.driver import Driver
+                d = session.query(Driver).filter(Driver.bus_id == bus.id, Driver.statut == "actif").first()
+                if d:
+                    idx = self.driver.findData(d.id)
+                    if idx >= 0:
+                        self.driver.setCurrentIndex(idx)
+            finally:
+                session.close()
+
         form.addRow("Code", self.code)
         form.addRow("Plaque", self.plaque)
-        form.addRow("Marque", self.marque)
-        form.addRow("Modèle", self.modele)
-        form.addRow("Année", self.annee)
-        form.addRow("Couleur", self.couleur)
         form.addRow("Capacité", self.capacite)
         form.addRow("Layout sièges", self.layout_c)
-        form.addRow("Date achat", self.date_achat)
+        form.addRow("Conducteur", self.driver)
         form.addRow("Statut", self.statut)
         form.addRow("Photo", photo_btn)
         form.addRow("", self.photo_lbl)
@@ -113,19 +113,19 @@ class BusDialog(QDialog):
             self.photo_lbl.setText(path)
 
     def values(self) -> dict:
-        qd = self.date_achat.date()
         return {
             "code": self.code.text().strip(),
             "plaque": self.plaque.text().strip() or None,
-            "marque": self.marque.text().strip() or None,
-            "modele": self.modele.text().strip() or None,
-            "annee": self.annee.value(),
-            "couleur": self.couleur.text().strip() or None,
+            "marque": None,
+            "modele": None,
+            "annee": None,
+            "couleur": None,
             "capacite": self.capacite.value(),
             "layout": self.layout_c.currentText(),
-            "date_achat": date(qd.year(), qd.month(), qd.day()),
+            "date_achat": None,
             "photo_path": self.photo_path,
             "statut": self.statut.currentText(),
+            "driver_id": self.driver.currentData(),
         }
 
 
@@ -160,12 +160,13 @@ class BusView(QWidget):
 
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
-            ["Code", "Plaque", "Marque / Modèle", "Capacité", "Layout", "Statut", "Actions"]
+            ["Code", "Plaque", "Conducteur", "Capacité", "Layout", "Statut", "Actions"]
         )
         style_table(self.table)
         self.table.horizontalHeader().setSectionResizeMode(
-            6, QHeaderView.ResizeMode.ResizeToContents
+            6, QHeaderView.ResizeMode.Interactive
         )
+        self.table.setColumnWidth(6, 220)
         lay.addWidget(self.table, 1)
 
     def refresh(self) -> None:
@@ -180,8 +181,11 @@ class BusView(QWidget):
             for b in buses:
                 row = self.table.rowCount()
                 self.table.insertRow(row)
-                mm = " / ".join(filter(None, [b.marque, b.modele])) or "—"
-                vals = [b.code, b.plaque or "—", mm, str(b.capacite), b.layout, b.statut]
+                driver_name = "—"
+                active_drivers = [d.full_name for d in b.drivers if d.statut == "actif"]
+                if active_drivers:
+                    driver_name = active_drivers[0]
+                vals = [b.code, b.plaque or "—", driver_name, str(b.capacite), b.layout, b.statut]
                 for col, v in enumerate(vals):
                     item = QTableWidgetItem(v)
                     item.setData(Qt.ItemDataRole.UserRole, b.id)
@@ -195,11 +199,11 @@ class BusView(QWidget):
         h = QHBoxLayout(w)
         h.setContentsMargins(4, 2, 4, 2)
         h.setSpacing(4)
-        edit = secondary_btn("Édit.")
+        edit = edit_action_btn("Édit.")
         edit.clicked.connect(lambda: self._edit(bus_id))
-        toggle = secondary_btn("Off" if statut == "actif" else "On")
+        toggle = toggle_action_btn("Off" if statut == "actif" else "On", active=(statut == "actif"))
         toggle.clicked.connect(lambda: self._toggle(bus_id, statut))
-        delete = secondary_btn("Suppr.")
+        delete = delete_action_btn("Suppr.")
         delete.clicked.connect(lambda: self._delete(bus_id))
         h.addWidget(edit)
         h.addWidget(toggle)
@@ -219,7 +223,14 @@ class BusView(QWidget):
             return
         session = get_session()
         try:
-            bus_service.create_bus_with_seats(session, user_id=self._actor(), **data)
+            driver_id = data.pop("driver_id", None)
+            bus = bus_service.create_bus_with_seats(session, user_id=self._actor(), **data)
+            session.flush()
+            if driver_id:
+                from models.driver import Driver
+                d = session.get(Driver, driver_id)
+                if d:
+                    d.bus_id = bus.id
             session.commit()
             self.refresh()
         except Exception as e:
@@ -238,7 +249,23 @@ class BusView(QWidget):
             if dlg.exec() != QDialog.DialogCode.Accepted:
                 return
             data = dlg.values()
+            driver_id = data.pop("driver_id", None)
             bus_service.update_bus(session, bus, user_id=self._actor(), **data)
+            session.flush()
+
+            # Reassign driver
+            from models.driver import Driver
+            # 1. Clear previous driver for this bus
+            prevs = session.query(Driver).filter(Driver.bus_id == bus.id).all()
+            for pd in prevs:
+                pd.bus_id = None
+            
+            # 2. Set new driver
+            if driver_id:
+                d = session.get(Driver, driver_id)
+                if d:
+                    d.bus_id = bus.id
+                    
             session.commit()
             self.refresh()
         except Exception as e:

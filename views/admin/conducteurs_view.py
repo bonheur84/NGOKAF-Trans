@@ -37,7 +37,11 @@ from resources import theme as T
 from services import driver_service, bus_service
 from services.session_store import current_session
 from utils.formatters import format_fc
-from views.admin.widgets import style_table, page_toolbar, secondary_btn, kpi_card, set_kpi
+from views.admin.widgets import (
+    style_table, page_toolbar, secondary_btn,
+    edit_action_btn, delete_action_btn,
+    kpi_card, set_kpi
+)
 from views.widgets.card import Card
 
 
@@ -48,17 +52,11 @@ class DriverDialog(QDialog):
         self.photo_path = driver.photo_path if driver else None
         self.setWindowTitle("Modifier conducteur" if driver else "Nouveau conducteur")
         self.setMinimumWidth(420)
-        self.setStyleSheet(f"background:{T.BG_MAIN};")
         form = QFormLayout(self)
 
         self.nom = QLineEdit()
         self.prenom = QLineEdit()
         self.telephone = QLineEdit()
-        self.adresse = QLineEdit()
-        self.permis = QLineEdit()
-        self.exp = QDateEdit()
-        self.exp.setCalendarPopup(True)
-        self.exp.setDate(QDate.currentDate().addYears(2))
         self.bus = QComboBox()
         self.bus.addItem("— Aucun —", None)
         self.statut = QComboBox()
@@ -80,11 +78,6 @@ class DriverDialog(QDialog):
             self.nom.setText(driver.nom)
             self.prenom.setText(driver.prenom)
             self.telephone.setText(driver.telephone or "")
-            self.adresse.setText(driver.adresse or "")
-            self.permis.setText(driver.numero_permis or "")
-            if driver.date_expiration_permis:
-                d = driver.date_expiration_permis
-                self.exp.setDate(QDate(d.year, d.month, d.day))
             idx = self.bus.findData(driver.bus_id)
             if idx >= 0:
                 self.bus.setCurrentIndex(idx)
@@ -96,9 +89,6 @@ class DriverDialog(QDialog):
         form.addRow("Nom", self.nom)
         form.addRow("Prénom", self.prenom)
         form.addRow("Téléphone", self.telephone)
-        form.addRow("Adresse", self.adresse)
-        form.addRow("N° permis", self.permis)
-        form.addRow("Expiration permis", self.exp)
         form.addRow("Bus assigné", self.bus)
         form.addRow("Statut", self.statut)
         form.addRow("Disponibilité", self.dispo)
@@ -125,14 +115,13 @@ class DriverDialog(QDialog):
             self.photo_lbl.setText(path)
 
     def values(self) -> dict:
-        qd = self.exp.date()
         return {
             "nom": self.nom.text().strip(),
             "prenom": self.prenom.text().strip(),
             "telephone": self.telephone.text().strip() or None,
-            "adresse": self.adresse.text().strip() or None,
-            "numero_permis": self.permis.text().strip() or None,
-            "date_expiration_permis": date(qd.year(), qd.month(), qd.day()),
+            "adresse": None,
+            "numero_permis": None,
+            "date_expiration_permis": None,
             "bus_id": self.bus.currentData(),
             "statut": self.statut.currentText(),
             "disponibilite": self.dispo.currentText(),
@@ -175,22 +164,26 @@ class ConducteursView(QWidget):
 
         self.cards_scroll = QScrollArea()
         self.cards_scroll.setWidgetResizable(True)
-        self.cards_scroll.setMaximumHeight(160)
-        self.cards_scroll.setStyleSheet("border:none;")
+        self.cards_scroll.setFixedHeight(230)
+        self.cards_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.cards_scroll.setStyleSheet("border:none; background:transparent;")
         self.cards_host = QWidget()
+        self.cards_host.setStyleSheet("background:transparent;")
         self.cards_lay = QHBoxLayout(self.cards_host)
+        self.cards_lay.setContentsMargins(2, 2, 2, 2)
         self.cards_lay.setSpacing(10)
         self.cards_scroll.setWidget(self.cards_host)
         lay.addWidget(self.cards_scroll)
 
-        self.table = QTableWidget(0, 7)
+        self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
-            ["Nom", "Téléphone", "Permis", "Expiration", "Bus", "Dispo", "Actions"]
+            ["Nom", "Téléphone", "Bus", "Dispo", "Actions"]
         )
         style_table(self.table)
         self.table.horizontalHeader().setSectionResizeMode(
-            6, QHeaderView.ResizeMode.ResizeToContents
+            4, QHeaderView.ResizeMode.Interactive
         )
+        self.table.setColumnWidth(4, 160)
         lay.addWidget(self.table, 1)
 
     def refresh(self) -> None:
@@ -202,24 +195,94 @@ class ConducteursView(QWidget):
             self._drivers_cache = drivers
             set_kpi(self.kpi_total, str(len(drivers)))
 
+            from PySide6.QtGui import QPixmap, QPainter, QPainterPath
+
             while self.cards_lay.count():
                 item = self.cards_lay.takeAt(0)
                 w = item.widget()
                 if w:
                     w.deleteLater()
-            for d in drivers[:8]:
-                card = Card(padding=10)
-                card.setFixedWidth(160)
+            for d in drivers:
+                card = Card(padding=12)
+                card.setFixedWidth(180)
+                card.setFixedHeight(190)
+                card.layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                # Avatar container (Round image or Initials)
+                avatar_lbl = QLabel()
+                avatar_lbl.setFixedSize(70, 70)
+                avatar_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                has_photo = False
+                if d.photo_path:
+                    src = QPixmap(d.photo_path)
+                    if not src.isNull():
+                        dst = QPixmap(70, 70)
+                        dst.fill(Qt.GlobalColor.transparent)
+                        painter = QPainter(dst)
+                        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                        path = QPainterPath()
+                        path.addEllipse(0, 0, 70, 70)
+                        painter.setClipPath(path)
+                        scaled = src.scaled(
+                            70, 70,
+                            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                        painter.drawPixmap(0, 0, scaled)
+                        painter.end()
+                        avatar_lbl.setPixmap(dst)
+                        has_photo = True
+
+                if not has_photo:
+                    initials = "".join([p[0] for p in d.full_name.split()[:2]]).upper() or "?"
+                    avatar_lbl.setText(initials)
+                    avatar_lbl.setStyleSheet(
+                        f"""
+                        background-color: {T.PRIMARY}18;
+                        color: {T.PRIMARY_ALT};
+                        border-radius: 35px;
+                        font-size: 22px;
+                        font-weight: bold;
+                        border: 2px solid {T.PRIMARY}33;
+                        """
+                    )
+
+                card.layout.addWidget(avatar_lbl, alignment=Qt.AlignmentFlag.AlignCenter)
+
+                # Name
                 name = QLabel(d.full_name)
-                name.setStyleSheet(f"font-weight:700; color:{T.TEXT_PRIMARY};")
+                name.setStyleSheet(f"font-weight:700; color:{T.TEXT_PRIMARY}; font-size:12px;")
                 name.setWordWrap(True)
+                name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                card.layout.addWidget(name)
+
+                # Bus
                 bus = QLabel(d.bus.code if d.bus else "Sans bus")
                 bus.setStyleSheet(f"color:{T.TEXT_SECONDARY}; font-size:11px;")
-                dispo = QLabel(d.disponibilite)
-                dispo.setStyleSheet(f"color:{T.PRIMARY_ALT}; font-size:11px; font-weight:600;")
-                card.layout.addWidget(name)
+                bus.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 card.layout.addWidget(bus)
-                card.layout.addWidget(dispo)
+
+                # Status Badge
+                dispo = QLabel(d.disponibilite.upper().replace("_", " "))
+                if d.disponibilite == "disponible":
+                    dispo.setStyleSheet(
+                        "color: #10B981; background-color: #ECFDF5; border: 1px solid #A7F3D0; "
+                        "border-radius: 10px; padding: 2px 8px; font-size: 9px; font-weight: 700;"
+                    )
+                elif d.disponibilite == "en_route":
+                    dispo.setStyleSheet(
+                        "color: #3B82F6; background-color: #EFF6FF; border: 1px solid #BFDBFE; "
+                        "border-radius: 10px; padding: 2px 8px; font-size: 9px; font-weight: 700;"
+                    )
+                else:
+                    dispo.setStyleSheet(
+                        "color: #EF4444; background-color: #FEF2F2; border: 1px solid #FCA5A5; "
+                        "border-radius: 10px; padding: 2px 8px; font-size: 9px; font-weight: 700;"
+                    )
+                dispo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                card.layout.addWidget(dispo, alignment=Qt.AlignmentFlag.AlignCenter)
+
                 self.cards_lay.addWidget(card)
             self.cards_lay.addStretch()
 
@@ -227,16 +290,9 @@ class ConducteursView(QWidget):
             for d in drivers:
                 row = self.table.rowCount()
                 self.table.insertRow(row)
-                exp = (
-                    d.date_expiration_permis.strftime("%d/%m/%Y")
-                    if d.date_expiration_permis
-                    else "—"
-                )
                 vals = [
                     d.full_name,
                     d.telephone or "—",
-                    d.numero_permis or "—",
-                    exp,
                     d.bus.code if d.bus else "—",
                     d.disponibilite,
                 ]
@@ -244,7 +300,7 @@ class ConducteursView(QWidget):
                     item = QTableWidgetItem(v)
                     item.setData(Qt.ItemDataRole.UserRole, d.id)
                     self.table.setItem(row, col, item)
-                self.table.setCellWidget(row, 6, self._actions(d.id))
+                self.table.setCellWidget(row, 4, self._actions(d.id))
         finally:
             session.close()
 
@@ -252,9 +308,10 @@ class ConducteursView(QWidget):
         w = QWidget()
         h = QHBoxLayout(w)
         h.setContentsMargins(4, 2, 4, 2)
-        edit = secondary_btn("Édit.")
+        h.setSpacing(4)
+        edit = edit_action_btn("Édit.")
         edit.clicked.connect(lambda: self._edit(driver_id))
-        delete = secondary_btn("Suppr.")
+        delete = delete_action_btn("Suppr.")
         delete.clicked.connect(lambda: self._delete(driver_id))
         h.addWidget(edit)
         h.addWidget(delete)
@@ -326,15 +383,13 @@ class ConducteursView(QWidget):
                 return
             with open(path, "w", newline="", encoding="utf-8-sig") as f:
                 w = csv.writer(f, delimiter=";")
-                w.writerow(["Nom", "Prenom", "Telephone", "Permis", "Expiration", "Bus", "Dispo", "Statut"])
+                w.writerow(["Nom", "Prenom", "Telephone", "Bus", "Dispo", "Statut"])
                 for d in self._drivers_cache:
                     w.writerow(
                         [
                             d.nom,
                             d.prenom,
                             d.telephone or "",
-                            d.numero_permis or "",
-                            d.date_expiration_permis or "",
                             d.bus.code if d.bus else "",
                             d.disponibilite,
                             d.statut,
@@ -349,15 +404,13 @@ class ConducteursView(QWidget):
             wb = Workbook()
             ws = wb.active
             ws.title = "Conducteurs"
-            ws.append(["Nom", "Prenom", "Telephone", "Permis", "Expiration", "Bus", "Dispo", "Statut"])
+            ws.append(["Nom", "Prenom", "Telephone", "Bus", "Dispo", "Statut"])
             for d in self._drivers_cache:
                 ws.append(
                     [
                         d.nom,
                         d.prenom,
                         d.telephone or "",
-                        d.numero_permis or "",
-                        str(d.date_expiration_permis or ""),
                         d.bus.code if d.bus else "",
                         d.disponibilite,
                         d.statut,
@@ -378,7 +431,7 @@ class ConducteursView(QWidget):
             y -= 24
             c.setFont("Helvetica", 9)
             for d in self._drivers_cache:
-                line = f"{d.full_name} | {d.telephone or '-'} | {d.numero_permis or '-'} | {d.disponibilite}"
+                line = f"{d.full_name} | {d.telephone or '-'} | {d.disponibilite}"
                 if y < 40:
                     c.showPage()
                     y = height - 40

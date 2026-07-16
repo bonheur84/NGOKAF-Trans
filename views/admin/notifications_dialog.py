@@ -25,7 +25,6 @@ class NotificationsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Notifications")
         self.resize(450, 520)
-        self.setStyleSheet(f"background:{T.BG_MAIN};")
         lay = QVBoxLayout(self)
         
         # Header with title and actions
@@ -121,7 +120,7 @@ class NotificationsDialog(QDialog):
         content.addWidget(msg)
         
         when = QLabel(n.created_at.strftime("%d/%m/%Y %H:%M"))
-        when.setStyleSheet(f"color:{T.TEXT_TERTIARY}; font-size:10px;")
+        when.setStyleSheet(f"color:{T.TEXT_SECONDARY}; font-size:10px;")
         content.addWidget(when)
         
         layout.addLayout(content, 1)

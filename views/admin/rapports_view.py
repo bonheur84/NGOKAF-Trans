@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from openpyxl import Workbook
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QScrollArea,
+    QHeaderView,
 )
 
 from config.settings import settings
@@ -96,25 +97,39 @@ class RapportsView(QWidget):
 
         charts = QHBoxLayout()
         c1 = Card(padding=8)
+        c1.setMinimumHeight(320)
         self.line = ChartCanvas(width=5.5, height=2.8)
         c1.layout.addWidget(self.line)
         charts.addWidget(c1, 3)
         c2 = Card(padding=8)
+        c2.setMinimumHeight(320)
         self.donut = ChartCanvas(width=3.5, height=2.8)
         c2.layout.addWidget(self.donut)
         charts.addWidget(c2, 2)
         lay.addLayout(charts)
 
         c3 = Card(padding=8)
+        c3.setMinimumHeight(320)
         self.bars = ChartCanvas(width=8, height=2.8)
         c3.layout.addWidget(self.bars)
         lay.addWidget(c3)
 
-        lay.addWidget(QLabel("Performance par trajet"))
+        perf_title = QLabel("Performance par trajet")
+        perf_title.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {T.TEXT_PRIMARY}; margin-top: 8px;")
+        lay.addWidget(perf_title)
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Trajet", "Billets", "Recettes"])
         style_table(self.table)
-        self.table.setMaximumHeight(220)
+        self.table.setMinimumHeight(200)
+        self.table.setMaximumHeight(280)
+        
+        # Dimensions intelligentes des colonnes : trajet s'étire, billets et recettes ont des largeurs adaptées
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(1, 110)
+        self.table.setColumnWidth(2, 150)
+        
         lay.addWidget(self.table)
 
         scroll.setWidget(body)
@@ -166,9 +181,23 @@ class RapportsView(QWidget):
             for label, count, amount in by_route:
                 row = self.table.rowCount()
                 self.table.insertRow(row)
-                self.table.setItem(row, 0, QTableWidgetItem(label))
-                self.table.setItem(row, 1, QTableWidgetItem(str(count)))
-                self.table.setItem(row, 2, QTableWidgetItem(format_fc(amount)))
+                
+                # Trajet (gauche)
+                item_label = QTableWidgetItem(label)
+                self.table.setItem(row, 0, item_label)
+                
+                # Billets (centré)
+                item_count = QTableWidgetItem(str(count))
+                item_count.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(row, 1, item_count)
+                
+                # Recettes (droite, gras)
+                item_amount = QTableWidgetItem(format_fc(amount))
+                item_amount.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                font = item_amount.font()
+                font.setBold(True)
+                item_amount.setFont(font)
+                self.table.setItem(row, 2, item_amount)
         finally:
             session.close()
 

@@ -224,3 +224,56 @@ def fleet_revenue(session: Session) -> Decimal:
     ).scalar()
     l = session.query(func.coalesce(func.sum(Luggage.total), 0)).scalar()
     return _money(t) + _money(l)
+
+
+def sales_heatmap(session: Session, days: int = 30) -> list[tuple[int, int, int]]:
+    start = date.today() - timedelta(days=days - 1)
+    rows = (
+        session.query(
+            func.dayofweek(Ticket.date_vente),
+            func.hour(Ticket.created_at),
+            func.count(Ticket.id)
+        )
+        .filter(Ticket.date_vente >= start, Ticket.statut == "vendu")
+        .group_by(func.dayofweek(Ticket.date_vente), func.hour(Ticket.created_at))
+        .all()
+    )
+    return [(int(d), int(h), int(c)) for d, h, c in rows]
+
+
+def filling_rate_by_route(session: Session) -> list[tuple[str, float]]:
+    from sqlalchemy import distinct
+    rows = (
+        session.query(
+            Route.ville_depart,
+            Route.ville_arrivee,
+            func.count(Ticket.id),
+            Bus.capacite,
+            func.count(distinct(Ticket.travel_date))
+        )
+        .join(Bus, Route.bus_id == Bus.id)
+        .outerjoin(Ticket, Ticket.route_id == Route.id)
+        .filter(Route.statut == "actif")
+        .group_by(Route.id, Route.ville_depart, Route.ville_arrivee, Bus.capacite)
+        .all()
+    )
+    out = []
+    for dep, arr, t_count, cap, date_count in rows:
+        date_count = max(1, int(date_count or 1))
+        cap = max(1, int(cap or 60))
+        rate = (t_count / (cap * date_count)) * 100.0
+        out.append((f"{dep} → {arr}", min(100.0, rate)))
+    return out
+
+
+def comparative_revenue(session: Session, days: int = 30) -> tuple[list[Decimal], list[Decimal]]:
+    today = date.today()
+    start_curr = today - timedelta(days=days - 1)
+    curr_rev = revenue_by_day(session, days, end=today)
+    
+    end_prev = start_curr - timedelta(days=1)
+    prev_rev = revenue_by_day(session, days, end=end_prev)
+    
+    curr_vals = [v for _, v in curr_rev]
+    prev_vals = [v for _, v in prev_rev]
+    return curr_vals, prev_vals

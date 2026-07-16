@@ -33,20 +33,20 @@ def global_stylesheet(font_family: str) -> str:
         border: 1px solid {T.PRIMARY};
     }}
     QPushButton#primaryBtn {{
-        background-color: {T.PRIMARY};
+        background-color: #3D2E00;
         color: {T.TEXT_WHITE};
         border: none;
         border-radius: {T.RADIUS_BUTTON}px;
         font-size: {T.SIZE_BUTTON}px;
         font-weight: 600;
-        padding: 8px 14px;
-        min-height: 22px;
+        padding: 8px 18px;
+        min-height: 36px;
     }}
     QPushButton#primaryBtn:hover {{
-        background-color: {T.HOVER};
+        background-color: #2A1F00;
     }}
     QPushButton#primaryBtn:disabled {{
-        background-color: #B5A67A;
+        background-color: #7A6B4A;
     }}
     QPushButton#secondaryBtn {{
         background-color: {T.BG_CARD};
@@ -56,8 +56,22 @@ def global_stylesheet(font_family: str) -> str:
         font-size: {T.SIZE_BUTTON}px;
         font-weight: 600;
         padding: 8px 14px;
+        min-height: 36px;
     }}
     QPushButton#secondaryBtn:hover {{
+        background-color: {T.BG_INPUT};
+    }}
+    QPushButton#actionBtn {{
+        background-color: {T.BG_CARD};
+        color: {T.TEXT_PRIMARY};
+        border: 1px solid {T.BORDER};
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 8px;
+        min-height: 20px;
+    }}
+    QPushButton#actionBtn:hover {{
         background-color: {T.BG_INPUT};
     }}
     QPushButton#linkBtn {{

@@ -27,8 +27,8 @@ class Route(Base):
 
     bus = relationship("Bus", back_populates="routes")
     driver = relationship("Driver", back_populates="routes")
-    tickets = relationship("Ticket", back_populates="route")
-    luggage_items = relationship("Luggage", back_populates="route")
+    tickets = relationship("Ticket", back_populates="route", cascade="all, delete-orphan")
+    luggage_items = relationship("Luggage", back_populates="route", cascade="all, delete-orphan")
 
     @property
     def label(self) -> str:

@@ -28,6 +28,8 @@ def create_bus_with_seats(
     date_achat: date | None = None,
     statut: str = "actif",
 ) -> Bus:
+    if session.query(Bus).filter(Bus.code == code.strip().upper()).first():
+        raise ValueError(f"Le code de bus « {code.strip().upper()} » existe déjà.")
     bus = Bus(
         code=code.strip().upper(),
         capacite=capacite,
@@ -59,6 +61,11 @@ def regenerate_seats(session: Session, bus: Bus, capacite: int) -> None:
 
 
 def update_bus(session: Session, bus: Bus, user_id: int | None = None, **fields) -> Bus:
+    if "code" in fields and fields["code"]:
+        new_code = fields["code"].strip().upper()
+        other = session.query(Bus).filter(Bus.code == new_code, Bus.id != bus.id).first()
+        if other:
+            raise ValueError(f"Le code de bus « {new_code} » existe déjà.")
     cap = fields.pop("capacite", None)
     for k, v in fields.items():
         if hasattr(bus, k):

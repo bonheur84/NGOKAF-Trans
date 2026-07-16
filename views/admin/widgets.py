@@ -25,6 +25,7 @@ def style_table(table: QTableWidget) -> None:
     table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
     table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     table.verticalHeader().setVisible(False)
+    table.verticalHeader().setDefaultSectionSize(36)
     table.horizontalHeader().setStretchLastSection(True)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     table.setShowGrid(False)
@@ -137,9 +138,113 @@ def secondary_btn(text: str) -> QPushButton:
     return btn
 
 
+def action_btn(text: str) -> QPushButton:
+    btn = QPushButton(text)
+    btn.setObjectName("actionBtn")
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    return btn
+
+
 def filter_bar() -> QFrame:
     f = QFrame()
     f.setStyleSheet(
         f"QFrame {{ background:{T.BG_CARD}; border-radius:10px; border:1px solid {T.BORDER}; }}"
     )
     return f
+
+
+def edit_action_btn(text: str = "Édit.") -> QPushButton:
+    btn = QPushButton(text)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn.setStyleSheet(
+        f"""
+        QPushButton {{
+            background-color: {T.PRIMARY}18;
+            color: {T.PRIMARY_ALT};
+            border: 1px solid {T.PRIMARY}55;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 8px;
+            min-height: 24px;
+        }}
+        QPushButton:hover {{
+            background-color: {T.PRIMARY}33;
+        }}
+        """
+    )
+    return btn
+
+
+def delete_action_btn(text: str = "Suppr.") -> QPushButton:
+    btn = QPushButton(text)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn.setStyleSheet(
+        """
+        QPushButton {
+            background-color: #FEF2F2;
+            color: #EF4444;
+            border: 1px solid #FCA5A5;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 8px;
+            min-height: 24px;
+        }
+        QPushButton:hover {
+            background-color: #FEE2E2;
+        }
+        """
+    )
+    return btn
+
+
+def toggle_action_btn(text: str, active: bool = True) -> QPushButton:
+    btn = QPushButton(text)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    color = "#F97316" if active else "#10B981"
+    bg = "#FFF7ED" if active else "#ECFDF5"
+    border = "#FED7AA" if active else "#A7F3D0"
+    hover = "#FFEDD5" if active else "#D1FAE5"
+    btn.setStyleSheet(
+        f"""
+        QPushButton {{
+            background-color: {bg};
+            color: {color};
+            border: 1px solid {border};
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 8px;
+            min-height: 24px;
+        }}
+        QPushButton:hover {{
+            background-color: {hover};
+        }}
+        """
+    )
+    return btn
+
+
+def normal_action_btn(text: str) -> QPushButton:
+    btn = QPushButton(text)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn.setStyleSheet(
+        f"""
+        QPushButton {{
+            background-color: {T.BG_CARD};
+            color: {T.TEXT_PRIMARY};
+            border: 1px solid {T.BORDER};
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 8px;
+            min-height: 24px;
+        }}
+        QPushButton:hover {{
+            background-color: {T.BG_INPUT};
+        }}
+        """
+    )
+    return btn
+

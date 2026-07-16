@@ -25,7 +25,11 @@ from resources import theme as T
 from services import user_admin_service, admin_stats_service
 from services.session_store import current_session
 from utils.formatters import format_fc
-from views.admin.widgets import style_table, page_toolbar, secondary_btn, kpi_card, set_kpi
+from views.admin.widgets import (
+    style_table, page_toolbar, secondary_btn,
+    edit_action_btn, delete_action_btn, toggle_action_btn, normal_action_btn,
+    kpi_card, set_kpi
+)
 
 
 class UserDialog(QDialog):
@@ -36,7 +40,6 @@ class UserDialog(QDialog):
         self.photo_path = user.photo_path if user else None
         self.setWindowTitle("Modifier utilisateur" if user else "Nouvel utilisateur")
         self.setMinimumWidth(420)
-        self.setStyleSheet(f"background:{T.BG_MAIN};")
         form = QFormLayout(self)
 
         self.nom = QLineEdit()
@@ -156,8 +159,9 @@ class UsersView(QWidget):
         )
         style_table(self.table)
         self.table.horizontalHeader().setSectionResizeMode(
-            6, QHeaderView.ResizeMode.ResizeToContents
+            6, QHeaderView.ResizeMode.Interactive
         )
+        self.table.setColumnWidth(6, 280)
         lay.addWidget(self.table, 1)
 
     def refresh(self) -> None:
@@ -197,13 +201,13 @@ class UsersView(QWidget):
         h = QHBoxLayout(w)
         h.setContentsMargins(4, 2, 4, 2)
         h.setSpacing(4)
-        edit = secondary_btn("Édit.")
+        edit = edit_action_btn("Édit.")
         edit.clicked.connect(lambda: self._edit(user_id))
-        reset = secondary_btn("MDP")
+        reset = normal_action_btn("MDP")
         reset.clicked.connect(lambda: self._reset_pwd(user_id))
-        block = secondary_btn("Bloquer" if statut == "actif" else "Activer")
+        block = toggle_action_btn("Bloquer" if statut == "actif" else "Activer", active=(statut == "actif"))
         block.clicked.connect(lambda: self._toggle(user_id, statut))
-        delete = secondary_btn("Suppr.")
+        delete = delete_action_btn("Suppr.")
         delete.clicked.connect(lambda: self._delete(user_id))
         h.addWidget(edit)
         h.addWidget(reset)
@@ -226,9 +230,12 @@ class UsersView(QWidget):
         session = get_session()
         try:
             pwd = data.pop("password")
-            user_admin_service.create_user(
+            statut = data.pop("statut", "actif")
+            user = user_admin_service.create_user(
                 session, password=pwd, actor_id=self._actor(), **data
             )
+            if statut != "actif":
+                user_admin_service.set_user_statut(session, user, statut, actor_id=self._actor())
             session.commit()
             self.refresh()
         except Exception as e:
