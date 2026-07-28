@@ -1,7 +1,7 @@
 """Login view — pixel-perfect vs 1.png."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QPixmap, QColor
 from PySide6.QtWidgets import (
     QWidget,
@@ -243,6 +243,8 @@ class LoginView(QWidget):
                 auth_service.save_remember_username(user)
             else:
                 auth_service.clear_remember_username()
-            self.login_success.emit()
+            # Defer to next event loop cycle so this method finishes cleanly
+            # before the window transition (login close + new window open)
+            QTimer.singleShot(0, self.login_success.emit)
         finally:
             session.close()

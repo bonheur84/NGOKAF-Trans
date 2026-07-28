@@ -128,9 +128,22 @@ def delete_user(session: Session, user: User, actor_id: int | None = None) -> No
             raise ValueError("Impossible de supprimer le dernier administrateur.")
     uid = user.id
     uname = user.username
-    session.delete(user)
+
+    # Nullify FK references to preserve historical data (revenue, tickets, luggage, etc.)
+    from sqlalchemy import text
+
+    session.execute(text("UPDATE audit_logs SET user_id = NULL WHERE user_id = :uid"), {"uid": uid})
+    session.execute(text("UPDATE login_logs SET user_id = NULL WHERE user_id = :uid"), {"uid": uid})
+    session.execute(text("UPDATE notifications SET user_id = NULL WHERE user_id = :uid"), {"uid": uid})
+    session.execute(text("UPDATE tickets SET cashier_id = NULL WHERE cashier_id = :uid"), {"uid": uid})
+    session.execute(text("UPDATE ticket_cancellations SET cancelled_by = NULL WHERE cancelled_by = :uid"), {"uid": uid})
+    session.execute(text("UPDATE luggage SET cashier_id = NULL WHERE cashier_id = :uid"), {"uid": uid})
+    session.flush()
+
     log_audit(session, "delete", "user", uid, actor_id, {"username": uname})
     notify(session, f"Utilisateur supprimé : {uname}", actor_id)
+    session.flush()
+    session.delete(user)
 
 
 def change_admin_password(

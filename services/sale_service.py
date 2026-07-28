@@ -132,8 +132,19 @@ def sell_ticket(
         cashier.id,
         {"numero": numero, "seat": seat_number, "price": str(price)},
     )
+
+    # Check if bus is now full
+    new_occupied = occupied_seats(session, bus.id, route.id, travel_date)
+    is_bus_full = len(new_occupied) >= bus.capacite
+    if is_bus_full:
+        bus.statut = "inactif"
+        route.statut = "inactif"
+        from services.notification_service import notify_bus_full
+        notify_bus_full(session, bus.id, f"{bus.code} ({route.short_label})", cashier.id)
+
     session.commit()
     session.refresh(ticket)
+    ticket.is_bus_full = is_bus_full
     return ticket
 
 

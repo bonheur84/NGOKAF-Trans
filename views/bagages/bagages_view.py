@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -34,6 +34,7 @@ from services.luggage_service import (
     list_recent_luggage,
     register_luggage,
     update_luggage_status,
+    reset_daily_luggage_links,
 )
 from services.session_store import current_session
 from services.print_service import print_luggage
@@ -53,8 +54,21 @@ class BagagesView(QWidget):
         self.routes = []
         self.selected_route_id: int | None = None
         self._items = []
+        self._last_checked_date = date.today()
         self._build()
         self.refresh()
+
+        # Timer checking for date change (midnight reset) every 30s
+        self._timer = QTimer(self)
+        self._timer.setInterval(30_000)
+        self._timer.timeout.connect(self._check_midnight_reset)
+        self._timer.start()
+
+    def _check_midnight_reset(self) -> None:
+        today = date.today()
+        if today != self._last_checked_date:
+            self._last_checked_date = today
+            self.refresh()
 
     def _build(self) -> None:
         root = QVBoxLayout(self)
@@ -294,6 +308,7 @@ class BagagesView(QWidget):
     def refresh(self) -> None:
         session = get_session()
         try:
+            reset_daily_luggage_links(session)
             stats = today_luggage_stats(session)
             self.stat_count_val.setText(str(stats["count"]))
             self.stat_count_sub.setText(stats["growth_label"])

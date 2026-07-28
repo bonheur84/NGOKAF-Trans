@@ -33,6 +33,9 @@ ALTERS: dict[str, list[tuple[str, str]]] = {
         ("notif_type", "VARCHAR(50) NULL DEFAULT 'info'"),
         ("icon", "VARCHAR(50) NULL DEFAULT 'bell'"),
     ],
+    "expenses": [
+        ("piece_jointe", "VARCHAR(500) NULL"),
+    ],
 }
 
 
@@ -92,3 +95,46 @@ def migrate_schema(engine: Engine) -> None:
                     pass
         except Exception:
             pass
+
+
+
+# Columns to modify (make nullable) — format: (table, column, new DDL)
+MODIFY_NULLABLE: list[tuple[str, str, str]] = [
+    ("luggage", "route_id", "INT NULL"),
+    ("luggage", "bus_id", "INT NULL"),
+    ("luggage", "cashier_id", "INT NULL"),
+    ("tickets", "cashier_id", "INT NULL"),
+]
+
+
+def _column_is_nullable(engine: Engine, table: str, column: str) -> bool:
+    """Return True if the column already allows NULL."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT IS_NULLABLE FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = :table
+                  AND COLUMN_NAME = :column
+                """
+            ),
+            {"table": table, "column": column},
+        ).fetchone()
+        if row is None:
+            return True  # column doesn't exist, skip
+        return row[0] == "YES"
+
+
+def migrate_nullable(engine: Engine) -> None:
+    """Make specific columns nullable if they are currently NOT NULL."""
+    with engine.begin() as conn:
+        for table, col, ddl in MODIFY_NULLABLE:
+            if _column_is_nullable(engine, table, col):
+                continue
+            try:
+                conn.execute(text(f"ALTER TABLE `{table}` MODIFY COLUMN `{col}` {ddl}"))
+                logger.info("Made nullable: %s.%s", table, col)
+            except Exception as e:
+                logger.warning("Could not modify %s.%s: %s", table, col, e)
+

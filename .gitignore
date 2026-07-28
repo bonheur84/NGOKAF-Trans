@@ -75,3 +75,6 @@ $RECYCLE.BIN/
 # Project specific
 config.ini
 .env.local
+/*.pdf
+/*.png
+

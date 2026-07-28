@@ -1,6 +1,10 @@
 """Admin Utilisateurs / caissiers CRUD."""
 from __future__ import annotations
 
+import csv
+from datetime import datetime
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget,
@@ -20,9 +24,10 @@ from PySide6.QtWidgets import (
     QInputDialog,
 )
 
+from config.settings import settings
 from database.session import get_session
 from resources import theme as T
-from services import user_admin_service, admin_stats_service
+from services import user_admin_service, admin_stats_service, export_service
 from services.session_store import current_session
 from utils.formatters import format_fc
 from views.admin.widgets import (
@@ -120,6 +125,7 @@ class UserDialog(QDialog):
 class UsersView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._users_cache: list = []
         self._build()
 
     def _build(self) -> None:
@@ -132,6 +138,10 @@ class UsersView(QWidget):
             add_label="Nouveau caissier",
             on_add=self._add,
         )
+        for label, kind in (("CSV", "csv"), ("Excel", "xlsx"), ("PDF", "pdf")):
+            btn = secondary_btn(label)
+            btn.clicked.connect(lambda checked=False, k=kind: self._export(k))
+            toolbar.addWidget(btn)
         lay.addLayout(toolbar)
 
         kpis = QHBoxLayout()
@@ -172,6 +182,7 @@ class UsersView(QWidget):
                 role=self.role.currentData(),
                 search=self.search.text() if self.search else "",
             )
+            self._users_cache = users
             active_c = sum(1 for u in users if u.role == "caissier" and u.statut == "actif")
             if self.role.currentData() is None:
                 active_c = sum(
@@ -321,3 +332,55 @@ class UsersView(QWidget):
             QMessageBox.critical(self, "Erreur", str(e))
         finally:
             session.close()
+
+    def _export(self, kind: str) -> None:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if kind == "csv":
+            path_str, _ = QFileDialog.getSaveFileName(
+                self, "Export CSV", str(settings.ROOT / f"utilisateurs_{stamp}.csv"), "Fichiers CSV (*.csv)"
+            )
+            if not path_str:
+                return
+            try:
+                with open(path_str, "w", newline="", encoding="utf-8-sig") as f:
+                    w = csv.writer(f, delimiter=";")
+                    w.writerow(["Nom", "Prénom", "Identifiant", "Téléphone", "Email", "Adresse", "Rôle", "Statut"])
+                    for u in self._users_cache:
+                        w.writerow([
+                            u.nom,
+                            u.prenom,
+                            u.username,
+                            u.telephone or "",
+                            getattr(u, "email", "") or "",
+                            getattr(u, "adresse", "") or "",
+                            u.role.title(),
+                            "Bloqué" if u.statut == "bloque" else "Actif",
+                        ])
+                QMessageBox.information(self, "Export réussi", f"✅ Fichier CSV enregistré :\n\n{path_str}")
+            except Exception as e:
+                QMessageBox.warning(self, "Erreur d'export", f"Erreur lors de l'export CSV :\n{str(e)}")
+
+        elif kind == "xlsx":
+            path_str, _ = QFileDialog.getSaveFileName(
+                self, "Export Excel", str(settings.ROOT / f"utilisateurs_{stamp}.xlsx"), "Fichiers Excel (*.xlsx)"
+            )
+            if not path_str:
+                return
+            try:
+                export_service.export_users_excel(self._users_cache, Path(path_str))
+                QMessageBox.information(self, "Export réussi", f"✅ Fichier Excel enregistré :\n\n{path_str}")
+            except Exception as e:
+                QMessageBox.warning(self, "Erreur d'export", f"Erreur lors de l'export Excel :\n{str(e)}")
+
+        elif kind == "pdf":
+            path_str, _ = QFileDialog.getSaveFileName(
+                self, "Export PDF", str(settings.ROOT / f"utilisateurs_{stamp}.pdf"), "Fichiers PDF (*.pdf)"
+            )
+            if not path_str:
+                return
+            try:
+                export_service.export_users_pdf(self._users_cache, Path(path_str))
+                QMessageBox.information(self, "Export réussi", f"✅ Rapport PDF avec cartes enregistré :\n\n{path_str}")
+            except Exception as e:
+                QMessageBox.warning(self, "Erreur d'export", f"Erreur lors de l'export PDF :\n{str(e)}")

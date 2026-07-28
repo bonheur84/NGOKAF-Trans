@@ -9,6 +9,7 @@ from models.notification import Notification
 from models.audit import AuditLog, LoginLog
 from models.sequence import Sequence
 from models.app_setting import AppSetting
+from models.expense import Expense
 
 __all__ = [
     "User",
@@ -24,4 +25,5 @@ __all__ = [
     "LoginLog",
     "Sequence",
     "AppSetting",
+    "Expense",
 ]

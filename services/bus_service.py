@@ -80,22 +80,60 @@ def update_bus(session: Session, bus: Bus, user_id: int | None = None, **fields)
 
 
 def set_bus_statut(session: Session, bus: Bus, statut: str, user_id: int | None = None) -> Bus:
+    from models.route import Route
     bus.statut = statut
+    # Synchronize routes for this bus
+    routes = session.query(Route).filter(Route.bus_id == bus.id).all()
+    for r in routes:
+        r.statut = statut if statut == "actif" else "inactif"
+
     session.flush()
     log_audit(session, "update", "bus", bus.id, user_id, {"statut": statut})
-    if statut != "actif":
-        notify(session, f"Bus désactivé : {bus.code}", user_id)
+    if statut == "actif":
+        notify(session, f"Bus et trajets réactivés : {bus.code}", user_id)
+    else:
+        notify(session, f"Bus et trajets désactivés : {bus.code}", user_id)
     return bus
 
 
+def reactivate_bus(session: Session, bus: Bus, user_id: int | None = None) -> Bus:
+    """Reactivate bus and its associated routes when it returns from a trip."""
+    return set_bus_statut(session, bus, "actif", user_id)
+
+
 def delete_bus(session: Session, bus: Bus, user_id: int | None = None) -> None:
-    if bus.routes:
-        raise ValueError("Ce bus est lié à des trajets. Désactivez-le plutôt.")
+    from models.ticket import Ticket
+    from models.luggage import Luggage
+    from models.route import Route
+    from sqlalchemy import text
+
     bid = bus.id
     code = bus.code
+
+    # Block deletion if routes are linked to this bus
+    route_count = session.query(Route).filter(Route.bus_id == bid).count()
+    if route_count > 0:
+        raise ValueError(
+            f"Impossible de supprimer ce bus : {route_count} trajet(s) y sont associé(s). "
+            "Veuillez d'abord supprimer ou réaffecter les trajets."
+        )
+
+    # Block deletion if luggage items are linked (bus_id is NOT NULL on luggage)
+    luggage_count = session.query(Luggage).filter(Luggage.bus_id == bid).count()
+    if luggage_count > 0:
+        raise ValueError(
+            f"Impossible de supprimer ce bus : {luggage_count} bagage(s) y sont associé(s). "
+            "Veuillez d'abord supprimer ou réaffecter les bagages."
+        )
+
+    # Nullify ticket bus_id via raw SQL to bypass NOT NULL constraint mismatch
+    session.execute(text("UPDATE tickets SET bus_id = NULL WHERE bus_id = :bid"), {"bid": bid})
+    session.flush()
     session.delete(bus)
     log_audit(session, "delete", "bus", bid, user_id, {"code": code})
     notify(session, f"Bus supprimé : {code}", user_id)
+    session.commit()
+
 
 
 def list_buses(
@@ -173,9 +211,17 @@ def set_route_statut(
     session: Session, route: Route, statut: str, user_id: int | None = None
 ) -> Route:
     route.statut = statut
+    if statut == "actif" and route.bus:
+        route.bus.statut = "actif"
     session.flush()
     log_audit(session, "update", "route", route.id, user_id, {"statut": statut})
-    if statut != "actif":
+    if statut == "actif":
+        notify(
+            session,
+            f"Trajet réactivé : {route.ville_depart} → {route.ville_arrivee}",
+            user_id,
+        )
+    else:
         notify(
             session,
             f"Trajet désactivé : {route.ville_depart} → {route.ville_arrivee}",
@@ -185,11 +231,30 @@ def set_route_statut(
 
 
 def delete_route(session: Session, route: Route, user_id: int | None = None) -> None:
+    from models.ticket import Ticket
+    from models.luggage import Luggage
+    from sqlalchemy import text
+
     rid = route.id
     label = f"{route.ville_depart} → {route.ville_arrivee}"
+
+    # Block deletion if luggage items are linked (route_id is NOT NULL on luggage)
+    luggage_count = session.query(Luggage).filter(Luggage.route_id == rid).count()
+    if luggage_count > 0:
+        raise ValueError(
+            f"Impossible de supprimer ce trajet : {luggage_count} bagage(s) y sont associé(s). "
+            "Veuillez d'abord supprimer ou réaffecter les bagages."
+        )
+
+    # Nullify ticket route_id via raw SQL to bypass NOT NULL constraint mismatch
+    # (the DB column may be NOT NULL while the ORM model declares nullable=True)
+    session.execute(text("UPDATE tickets SET route_id = NULL WHERE route_id = :rid"), {"rid": rid})
+    session.flush()
     session.delete(route)
     log_audit(session, "delete", "route", rid, user_id, {"label": label})
     notify(session, f"Trajet supprimé : {label}", user_id)
+    session.commit()
+
 
 
 def list_routes(

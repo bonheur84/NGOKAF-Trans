@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 from database.connection import init_connection
-from database.migrate import migrate_schema
+from database.migrate import migrate_schema, migrate_nullable
 from database.session import Base, get_session
 
 import models  # noqa: F401
@@ -19,6 +19,7 @@ def init_database() -> None:
     engine = init_connection()
     Base.metadata.create_all(bind=engine)
     migrate_schema(engine)
+    migrate_nullable(engine)
     logger.info("All tables created/verified.")
     session = get_session()
     try:

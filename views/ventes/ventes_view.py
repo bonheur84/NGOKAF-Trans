@@ -294,11 +294,19 @@ class VentesView(QWidget):
                 .filter_by(id=ticket.id)
                 .one()
             )
-            path = print_ticket(ticket, user.id, preview_only=False)
+            is_full = getattr(ticket, "is_bus_full", False)
+            full_msg = "\n\n🚌 ATTENTION : Le bus est maintenant COMPLET (100% des sièges occupés) et prêt au départ ! Le bus et son trajet ont été désactivés." if is_full else ""
+
+            try:
+                path = print_ticket(ticket, user_id=user.id if user else None)
+                print_info = f"Imprimé : {path.name}"
+            except Exception:
+                print_info = "Impression échouée"
+
             QMessageBox.information(
                 self,
                 "Billet enregistré",
-                f"Billet {ticket.numero} enregistré.\nImpression : {path}",
+                f"Billet {ticket.numero} enregistré.\n{print_info}{full_msg}",
             )
             self._reset()
             self.refresh()

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import io
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 
 import qrcode
@@ -48,14 +48,25 @@ def generate_ticket_pdf(ticket, path: Path | None = None) -> Path:
     else:
         y -= 2 * mm
 
+    # Dynamic Agency profile from DB settings
+    agency_name = settings.AGENCY_NAME
+    agency_address = settings.AGENCY_ADDRESS
+    try:
+        from database.session import get_session
+        from services import settings_service
+        session = get_session()
+        agency_name = settings_service.get_setting(session, "agency_name", settings.AGENCY_NAME)
+        agency_address = settings_service.get_setting(session, "agency_address", settings.AGENCY_ADDRESS)
+        session.close()
+    except Exception:
+        pass
+
     c.setFillColorRGB(0.18, 0.18, 0.18)
     c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString(w / 2, y, settings.AGENCY_NAME)
+    c.drawCentredString(w / 2, y, agency_name)
     y -= 5 * mm
     c.setFont("Helvetica", 8)
-    c.drawCentredString(w / 2, y, "Agence Centrale - Douala")
-    y -= 4 * mm
-    c.drawCentredString(w / 2, y, f"{settings.AGENCY_ADDRESS}")
+    c.drawCentredString(w / 2, y, agency_address)
     y -= 6 * mm
 
     c.setFont("Helvetica", 7)
@@ -73,32 +84,21 @@ def generate_ticket_pdf(ticket, path: Path | None = None) -> Path:
     c.line(6 * mm, y, w - 6 * mm, y)
     y -= 6 * mm
 
-    # Date & seat — date de voyage + heure de départ
-    travel_dt = datetime.combine(ticket.travel_date, ticket.route.heure_depart)
+    # Emission Date & Time + Seat number (Date & heure d'émission du ticket)
     printed_at = ticket.created_at or datetime.now()
-    date_str = (
-        f"{travel_dt.day:02d} {MONTHS_FR[travel_dt.month]} {travel_dt.year} "
-        f"- {travel_dt.strftime('%H:%M')}"
-    )
+    emission_str = f"{printed_at.day:02d} {MONTHS_FR[printed_at.month]} {printed_at.year} - {printed_at.strftime('%H:%M')}"
+
     c.setFont("Helvetica", 6)
     c.setFillColorRGB(0.43, 0.43, 0.43)
-    c.drawString(6 * mm, y, "DATE & HEURE DÉPART")
+    c.drawString(6 * mm, y, "DATE & HEURE ÉMISSION")
     c.drawRightString(w - 6 * mm, y, "SIÈGE")
     y -= 5 * mm
     c.setFillColorRGB(0.18, 0.18, 0.18)
     c.setFont("Helvetica-Bold", 9)
-    c.drawString(6 * mm, y, date_str)
+    c.drawString(6 * mm, y, emission_str)
     c.setFont("Helvetica-Bold", 14)
     c.drawRightString(w - 6 * mm, y, str(ticket.seat_number))
-    y -= 4 * mm
-    c.setFont("Helvetica", 6)
-    c.setFillColorRGB(0.43, 0.43, 0.43)
-    c.drawString(
-        6 * mm,
-        y,
-        f"Émis le {printed_at.strftime('%d/%m/%Y à %H:%M')}",
-    )
-    y -= 5 * mm
+    y -= 6 * mm
 
     c.setStrokeColorRGB(0.89, 0.85, 0.76)
     c.line(6 * mm, y, w - 6 * mm, y)
@@ -110,8 +110,8 @@ def generate_ticket_pdf(ticket, path: Path | None = None) -> Path:
     y -= 5 * mm
     c.setFillColorRGB(0.18, 0.18, 0.18)
     c.setFont("Helvetica-Bold", 11)
-    depart = ticket.route.ville_depart.upper()
-    arrivee = ticket.route.ville_arrivee.upper()
+    depart = ticket.route.ville_depart.upper() if (ticket.route and getattr(ticket.route, "ville_depart", None)) else "—"
+    arrivee = ticket.route.ville_arrivee.upper() if (ticket.route and getattr(ticket.route, "ville_arrivee", None)) else "—"
     c.drawCentredString(w / 2, y, f"{depart}  →  {arrivee}")
     y -= 5 * mm
 

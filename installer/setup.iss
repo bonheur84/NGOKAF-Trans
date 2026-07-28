@@ -45,7 +45,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; Full PyInstaller onedir package
 Source: "..\dist\NGOKAF_TRANS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Seed user config only on first install (never overwrite existing)
-Source: "..\.env.example"; DestDir: "{app}"; DestName: ".env"; Flags: onlyifdoesntexist
+Source: "..\.env.example"; DestDir: "{app}"; DestName: "env.ini"; Flags: onlyifdoesntexist
 Source: "..\config.ini.example"; DestDir: "{app}"; DestName: "config.ini"; Flags: onlyifdoesntexist
 Source: "..\.env.example"; DestDir: "{app}"; DestName: ".env.example"; Flags: ignoreversion
 Source: "..\config.ini.example"; DestDir: "{app}"; DestName: "config.ini.example"; Flags: ignoreversion

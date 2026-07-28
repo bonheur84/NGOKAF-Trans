@@ -160,15 +160,15 @@ class TrajetsView(QWidget):
         filters.addStretch()
         lay.addLayout(filters)
 
-        self.table = QTableWidget(0, 8)
+        self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
-            ["Départ", "Arrivée", "H. dép.", "Prix", "Bus", "Conducteur", "Statut", "Actions"]
+            ["Départ", "Arrivée", "Prix", "Bus", "Conducteur", "Statut", "Actions"]
         )
         style_table(self.table)
         self.table.horizontalHeader().setSectionResizeMode(
-            7, QHeaderView.ResizeMode.Interactive
+            6, QHeaderView.ResizeMode.Interactive
         )
-        self.table.setColumnWidth(7, 220)
+        self.table.setColumnWidth(6, 220)
         lay.addWidget(self.table, 1)
 
     def refresh(self) -> None:
@@ -186,7 +186,6 @@ class TrajetsView(QWidget):
                 vals = [
                     r.ville_depart,
                     r.ville_arrivee,
-                    r.heure_depart.strftime("%H:%M"),
                     format_fc(r.prix_indicatif),
                     r.bus.code if r.bus else "—",
                     r.driver.full_name if r.driver else "—",
@@ -196,7 +195,7 @@ class TrajetsView(QWidget):
                     item = QTableWidgetItem(str(v))
                     item.setData(Qt.ItemDataRole.UserRole, r.id)
                     self.table.setItem(row, col, item)
-                self.table.setCellWidget(row, 7, self._actions(r.id, r.statut))
+                self.table.setCellWidget(row, 6, self._actions(r.id, r.statut))
         finally:
             session.close()
 
@@ -207,7 +206,8 @@ class TrajetsView(QWidget):
         h.setSpacing(4)
         edit = edit_action_btn("Édit.")
         edit.clicked.connect(lambda: self._edit(route_id))
-        toggle = toggle_action_btn("Off" if statut == "actif" else "On", active=(statut == "actif"))
+        btn_label = "Désactiver" if statut == "actif" else "Réactiver"
+        toggle = toggle_action_btn(btn_label, active=(statut == "actif"))
         toggle.clicked.connect(lambda: self._toggle(route_id, statut))
         delete = delete_action_btn("Suppr.")
         delete.clicked.connect(lambda: self._delete(route_id))
@@ -280,7 +280,6 @@ class TrajetsView(QWidget):
             route = bus_service.get_route(session, route_id)
             if route:
                 bus_service.delete_route(session, route, self._actor())
-                session.commit()
                 self.refresh()
         except Exception as e:
             session.rollback()

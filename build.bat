@@ -51,18 +51,16 @@ if not exist "dist\NGOKAF_TRANS\NGOKAF_TRANS.exe" (
 echo.
 echo [5/5] Compilation Inno Setup (Setup_Ngokaf_Trans.exe^)...
 
-set "ISCC="
-if exist "%LocalAppData%\Programs\Inno Setup 6\ISCC.exe" set "ISCC=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe"
-if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
-if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+set ISCC=
+if exist "%LocalAppData%\Programs\Inno Setup 6\ISCC.exe" set ISCC=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe
+if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe
+if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe
 
-if "%ISCC%"=="" (
-  for /f "delims=" %%i in ('where ISCC.exe 2^>nul') do if not defined ISCC set "ISCC=%%i"
+if not defined ISCC (
+  for /f "delims=" %%i in ('where ISCC.exe 2^>nul') do if not defined ISCC set ISCC=%%i
 )
 
-echo ISCC detected: "%ISCC%"
-
-if "%ISCC%"=="" (
+if not defined ISCC (
   echo.
   echo [ERREUR] Inno Setup 6 introuvable (ISCC.exe).
   echo.
@@ -75,8 +73,9 @@ if "%ISCC%"=="" (
   exit /b 1
 )
 
-echo Utilisation: %ISCC%
-call "%ISCC%" "installer\setup.iss"
+echo ISCC detected: "%ISCC%"
+echo Utilisation: "%ISCC%"
+"%ISCC%" "installer\setup.iss"
 if errorlevel 1 (
   echo [ERREUR] Echec compilation Inno Setup.
   exit /b 1

@@ -22,9 +22,7 @@ from resources import theme as T
 from services.session_store import current_session
 from utils.formatters import format_long_date
 from utils.icons import fa_icon, ICONS
-from views.ventes.ventes_view import VentesView
-from views.bagages.bagages_view import BagagesView
-from views.ventes.historique_dialog import HistoriqueDialog
+# Views are imported lazily inside _get_page() to avoid loading all modules at startup
 
 
 class SidebarButton(QPushButton):
@@ -89,6 +87,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 720)
         self.setStyleSheet(f"QMainWindow {{ background: {T.BG_MAIN}; }}")
         self._idle_ms = settings.SESSION_TIMEOUT_MINUTES * 60 * 1000
+        self._page_cache: dict[int, QWidget] = {}
         self._build()
         self._setup_idle_timer()
         self._clock_timer = QTimer(self)
@@ -215,17 +214,36 @@ class MainWindow(QMainWindow):
         ml.addLayout(header)
 
         self.stack = QStackedWidget()
-        self.ventes = VentesView()
-        self.bagages = BagagesView()
-        self.stack.addWidget(self.ventes)
-        self.stack.addWidget(self.bagages)
+        # Placeholders replaced lazily on first navigation
+        self.stack.addWidget(QWidget())  # index 0: Ventes
+        self.stack.addWidget(QWidget())  # index 1: Bagages
         ml.addWidget(self.stack, 1)
 
         layout.addWidget(main, 1)
         self._navigate(0)
 
+    def _get_page(self, index: int) -> QWidget:
+        """Return the real page widget for *index*, creating it on first call."""
+        if index in self._page_cache:
+            return self._page_cache[index]
+        if index == 0:
+            from views.ventes.ventes_view import VentesView
+            page: QWidget = VentesView()
+        elif index == 1:
+            from views.bagages.bagages_view import BagagesView
+            page = BagagesView()
+        else:
+            page = QWidget()
+        self._page_cache[index] = page
+        old = self.stack.widget(index)
+        self.stack.insertWidget(index, page)
+        self.stack.removeWidget(old)
+        old.deleteLater()
+        return page
+
     def _navigate(self, index: int) -> None:
-        self.stack.setCurrentIndex(index)
+        page = self._get_page(index)
+        self.stack.setCurrentWidget(page)
         self.btn_ventes.set_active(index == 0)
         self.btn_bagages.set_active(index == 1)
         if index == 0:
@@ -233,15 +251,18 @@ class MainWindow(QMainWindow):
             self.page_title.setStyleSheet(
                 f"font-size:22px; font-weight:700; color:{T.TEXT_PRIMARY};"
             )
-            self.ventes.refresh()
+            if hasattr(page, "refresh"):
+                page.refresh()
         else:
             self.page_title.setText("Gestion des Bagages")
             self.page_title.setStyleSheet(
                 f"font-size:22px; font-weight:700; color:{T.PRIMARY_ALT};"
             )
-            self.bagages.refresh()
+            if hasattr(page, "refresh"):
+                page.refresh()
 
     def _show_history(self) -> None:
+        from views.ventes.historique_dialog import HistoriqueDialog
         dlg = HistoriqueDialog(self)
         dlg.exec()
 

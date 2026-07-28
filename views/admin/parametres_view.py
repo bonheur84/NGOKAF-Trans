@@ -137,12 +137,12 @@ class ParametresView(QWidget):
         self.prefix         = _input("Ex: TK-")
 
         for label, widget in [
-            ("Nom de l'agence",  self.agency_name),
-            ("Adresse",          self.agency_address),
-            ("Téléphone",        self.agency_phone),
-            ("Terminal",         self.terminal_name),
-            ("Devise",           self.currency),
-            ("Préfixe tickets",  self.prefix),
+            ("Nom de l'agence",             self.agency_name),
+            ("Adresse (Ticket & Agence)",   self.agency_address),
+            ("Téléphone",                   self.agency_phone),
+            ("Terminal",                    self.terminal_name),
+            ("Devise",                      self.currency),
+            ("Préfixe tickets",             self.prefix),
         ]:
             agency_card.layout.addLayout(_row(label, widget))
 

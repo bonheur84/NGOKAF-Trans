@@ -201,7 +201,8 @@ class BusView(QWidget):
         h.setSpacing(4)
         edit = edit_action_btn("Édit.")
         edit.clicked.connect(lambda: self._edit(bus_id))
-        toggle = toggle_action_btn("Off" if statut == "actif" else "On", active=(statut == "actif"))
+        btn_label = "Désactiver" if statut == "actif" else "Réactiver"
+        toggle = toggle_action_btn(btn_label, active=(statut == "actif"))
         toggle.clicked.connect(lambda: self._toggle(bus_id, statut))
         delete = delete_action_btn("Suppr.")
         delete.clicked.connect(lambda: self._delete(bus_id))
@@ -297,7 +298,6 @@ class BusView(QWidget):
             bus = bus_service.get_bus(session, bus_id)
             if bus:
                 bus_service.delete_bus(session, bus, self._actor())
-                session.commit()
                 self.refresh()
         except Exception as e:
             session.rollback()

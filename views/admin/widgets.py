@@ -70,8 +70,9 @@ def kpi_card(title: str, value: str, icon_name: str | None = None) -> Card:
     top = QHBoxLayout()
     top.addWidget(title_lbl, 1)
     if icon_name:
+        resolved_icon = ICONS.get(icon_name, icon_name)
         ic = QLabel()
-        ic.setPixmap(fa_icon(icon_name, color=T.PRIMARY_ALT).pixmap(20, 20))
+        ic.setPixmap(fa_icon(resolved_icon, color=T.PRIMARY_ALT).pixmap(20, 20))
         top.addWidget(ic)
     card.layout.addLayout(top)
     card.layout.addWidget(val)

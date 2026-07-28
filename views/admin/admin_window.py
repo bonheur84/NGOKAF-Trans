@@ -24,14 +24,7 @@ from services import notification_service
 from services.session_store import current_session
 from utils.formatters import format_long_date
 from utils.icons import fa_icon, ICONS
-from views.admin.dashboard_view import DashboardView
-from views.admin.trajets_view import TrajetsView
-from views.admin.bus_view import BusView
-from views.admin.conducteurs_view import ConducteursView
-from views.admin.users_view import UsersView
-from views.admin.rapports_view import RapportsView
-from views.admin.parametres_view import ParametresView
-from views.admin.notifications_dialog import NotificationsDialog
+# Views are imported lazily inside _get_page() to avoid loading all modules at startup
 
 
 class SidebarButton(QPushButton):
@@ -95,6 +88,7 @@ class AdminWindow(QMainWindow):
         ("Bus", "bus", "Gestion des Bus"),
         ("Conducteurs", "driver", "Gestion des Conducteurs"),
         ("Utilisateurs", "users", "Gestion des Utilisateurs"),
+        ("Finance", "expense", "Gestion Financière"),
         ("Rapports", "reports", "Rapports"),
         ("Paramètres", "settings", "Paramètres"),
     ]
@@ -106,6 +100,8 @@ class AdminWindow(QMainWindow):
         self.setMinimumSize(1200, 720)
         self.setStyleSheet(f"QMainWindow {{ background: {T.BG_MAIN}; }}")
         self._nav_buttons: list[SidebarButton] = []
+        # _page_cache holds already-instantiated page widgets by index
+        self._page_cache: dict[int, QWidget] = {}
         self._build()
         self._clock_timer = QTimer(self)
         self._clock_timer.timeout.connect(self._tick_clock)
@@ -243,37 +239,66 @@ class AdminWindow(QMainWindow):
         ml.addLayout(header)
 
         self.stack = QStackedWidget()
-        self.dashboard = DashboardView()
-        self.trajets = TrajetsView()
-        self.bus = BusView()
-        self.conducteurs = ConducteursView()
-        self.users = UsersView()
-        self.rapports = RapportsView()
-        self.parametres = ParametresView()
-        for w in (
-            self.dashboard,
-            self.trajets,
-            self.bus,
-            self.conducteurs,
-            self.users,
-            self.rapports,
-            self.parametres,
-        ):
-            self.stack.addWidget(w)
+        # Add placeholder widgets for each menu item; real pages are lazy-loaded
+        for _ in self.MENU:
+            placeholder = QWidget()
+            self.stack.addWidget(placeholder)
         ml.addWidget(self.stack, 1)
         layout.addWidget(main, 1)
 
+    def _get_page(self, index: int) -> QWidget:
+        """Return the real page widget for *index*, creating it on first call."""
+        if index in self._page_cache:
+            return self._page_cache[index]
+
+        # Lazy imports + instantiation
+        if index == 0:
+            from views.admin.dashboard_view import DashboardView
+            page: QWidget = DashboardView()
+        elif index == 1:
+            from views.admin.trajets_view import TrajetsView
+            page = TrajetsView()
+        elif index == 2:
+            from views.admin.bus_view import BusView
+            page = BusView()
+        elif index == 3:
+            from views.admin.conducteurs_view import ConducteursView
+            page = ConducteursView()
+        elif index == 4:
+            from views.admin.users_view import UsersView
+            page = UsersView()
+        elif index == 5:
+            from views.admin.finances_view import FinancesView
+            page = FinancesView()
+        elif index == 6:
+            from views.admin.rapports_view import RapportsView
+            page = RapportsView()
+        elif index == 7:
+            from views.admin.parametres_view import ParametresView
+            page = ParametresView()
+        else:
+            page = QWidget()
+
+        self._page_cache[index] = page
+        # Replace placeholder with real widget
+        old = self.stack.widget(index)
+        self.stack.insertWidget(index, page)
+        self.stack.removeWidget(old)
+        old.deleteLater()
+        return page
+
     def _navigate(self, index: int) -> None:
-        self.stack.setCurrentIndex(index)
+        page = self._get_page(index)
+        self.stack.setCurrentWidget(page)
         for i, btn in enumerate(self._nav_buttons):
             btn.set_active(i == index)
         self.page_title.setText(self.MENU[index][2])
-        page = self.stack.widget(index)
         if hasattr(page, "refresh"):
             page.refresh()
         self._refresh_notif_badge()
 
     def _show_notifications(self) -> None:
+        from views.admin.notifications_dialog import NotificationsDialog
         dlg = NotificationsDialog(self)
         dlg.exec()
         self._refresh_notif_badge()

@@ -103,4 +103,9 @@ ICONS = {
     "warning": "triangle-exclamation",
     "money": "coins",
     "save": "floppy-disk",
+    "expense": "money-bill-wave",
+    "trending_up": "arrow-trend-up",
+    "download": "download",
+    "file": "file",
+    "chart": "chart-pie",
 }

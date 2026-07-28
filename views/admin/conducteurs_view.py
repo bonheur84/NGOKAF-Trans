@@ -5,9 +5,6 @@ import csv
 from datetime import date, datetime
 from pathlib import Path
 
-from openpyxl import Workbook
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -34,7 +31,7 @@ from PySide6.QtWidgets import (
 from config.settings import settings
 from database.session import get_session
 from resources import theme as T
-from services import driver_service, bus_service
+from services import driver_service, bus_service, export_service
 from services.session_store import current_session
 from utils.formatters import format_fc
 from views.admin.widgets import (
@@ -375,68 +372,50 @@ class ConducteursView(QWidget):
 
     def _export(self, kind: str) -> None:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
         if kind == "csv":
-            path, _ = QFileDialog.getSaveFileName(
-                self, "Export CSV", str(settings.ROOT / f"conducteurs_{stamp}.csv"), "CSV (*.csv)"
+            path_str, _ = QFileDialog.getSaveFileName(
+                self, "Export CSV", str(settings.ROOT / f"conducteurs_{stamp}.csv"), "Fichiers CSV (*.csv)"
             )
-            if not path:
+            if not path_str:
                 return
-            with open(path, "w", newline="", encoding="utf-8-sig") as f:
-                w = csv.writer(f, delimiter=";")
-                w.writerow(["Nom", "Prenom", "Telephone", "Bus", "Dispo", "Statut"])
-                for d in self._drivers_cache:
-                    w.writerow(
-                        [
+            try:
+                with open(path_str, "w", newline="", encoding="utf-8-sig") as f:
+                    w = csv.writer(f, delimiter=";")
+                    w.writerow(["Nom", "Prénom", "Téléphone", "Bus", "Disponibilité", "Statut"])
+                    for d in self._drivers_cache:
+                        w.writerow([
                             d.nom,
                             d.prenom,
                             d.telephone or "",
                             d.bus.code if d.bus else "",
-                            d.disponibilite,
-                            d.statut,
-                        ]
-                    )
+                            d.disponibilite.replace("_", " ").title(),
+                            d.statut.title(),
+                        ])
+                QMessageBox.information(self, "Export réussi", f"✅ Fichier CSV enregistré :\n\n{path_str}")
+            except Exception as e:
+                QMessageBox.warning(self, "Erreur d'export", f"Erreur lors de l'export CSV :\n{str(e)}")
+
         elif kind == "xlsx":
-            path, _ = QFileDialog.getSaveFileName(
-                self, "Export Excel", str(settings.ROOT / f"conducteurs_{stamp}.xlsx"), "Excel (*.xlsx)"
+            path_str, _ = QFileDialog.getSaveFileName(
+                self, "Export Excel", str(settings.ROOT / f"conducteurs_{stamp}.xlsx"), "Fichiers Excel (*.xlsx)"
             )
-            if not path:
+            if not path_str:
                 return
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Conducteurs"
-            ws.append(["Nom", "Prenom", "Telephone", "Bus", "Dispo", "Statut"])
-            for d in self._drivers_cache:
-                ws.append(
-                    [
-                        d.nom,
-                        d.prenom,
-                        d.telephone or "",
-                        d.bus.code if d.bus else "",
-                        d.disponibilite,
-                        d.statut,
-                    ]
-                )
-            wb.save(path)
-        else:
-            path, _ = QFileDialog.getSaveFileName(
-                self, "Export PDF", str(settings.ROOT / f"conducteurs_{stamp}.pdf"), "PDF (*.pdf)"
+            try:
+                export_service.export_drivers_excel(self._drivers_cache, Path(path_str))
+                QMessageBox.information(self, "Export réussi", f"✅ Fichier Excel enregistré :\n\n{path_str}")
+            except Exception as e:
+                QMessageBox.warning(self, "Erreur d'export", f"Erreur lors de l'export Excel :\n{str(e)}")
+
+        elif kind == "pdf":
+            path_str, _ = QFileDialog.getSaveFileName(
+                self, "Export PDF", str(settings.ROOT / f"conducteurs_{stamp}.pdf"), "Fichiers PDF (*.pdf)"
             )
-            if not path:
+            if not path_str:
                 return
-            c = canvas.Canvas(path, pagesize=A4)
-            width, height = A4
-            y = height - 40
-            c.setFont("Helvetica-Bold", 14)
-            c.drawString(40, y, "Registre des conducteurs")
-            y -= 24
-            c.setFont("Helvetica", 9)
-            for d in self._drivers_cache:
-                line = f"{d.full_name} | {d.telephone or '-'} | {d.disponibilite}"
-                if y < 40:
-                    c.showPage()
-                    y = height - 40
-                    c.setFont("Helvetica", 9)
-                c.drawString(40, y, line[:110])
-                y -= 14
-            c.save()
-        QMessageBox.information(self, "Export", f"Fichier enregistré :\n{path}")
+            try:
+                export_service.export_drivers_pdf(self._drivers_cache, Path(path_str))
+                QMessageBox.information(self, "Export réussi", f"✅ Rapport PDF avec cartes enregistré :\n\n{path_str}")
+            except Exception as e:
+                QMessageBox.warning(self, "Erreur d'export", f"Erreur lors de l'export PDF :\n{str(e)}")

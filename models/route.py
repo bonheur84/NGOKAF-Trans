@@ -27,7 +27,7 @@ class Route(Base):
 
     bus = relationship("Bus", back_populates="routes")
     driver = relationship("Driver", back_populates="routes")
-    tickets = relationship("Ticket", back_populates="route", cascade="all, delete-orphan")
+    tickets = relationship("Ticket", back_populates="route", passive_deletes=True)
     luggage_items = relationship("Luggage", back_populates="route", cascade="all, delete-orphan")
 
     @property

@@ -25,12 +25,21 @@ def next_luggage_number(session: Session) -> str:
         .first()
     )
     if not seq:
-        seq = Sequence(name="luggage", seq_date=today, value=0)
+        # Determine starting value from existing luggage numbers to avoid duplicates
+        last = session.query(Luggage.numero).order_by(Luggage.id.desc()).first()
+        start_value = 0
+        if last:
+            try:
+                # numero format is BG-XXXXXX, extract the numeric part
+                start_value = int(last[0].split("-")[-1])
+            except (ValueError, IndexError):
+                start_value = 0
+        seq = Sequence(name="luggage", seq_date=today, value=start_value)
         session.add(seq)
         session.flush()
     seq.value += 1
     session.flush()
-    # Format BG-002490 style with day-resetting counter padded
+    # Format BG-002490 style with globally incrementing counter padded
     return f"BG-{seq.value:06d}"
 
 
@@ -140,16 +149,32 @@ def update_luggage_status(
     return item
 
 
+from datetime import date, datetime, time
+from sqlalchemy import func, text
+
+
+def reset_daily_luggage_links(session: Session) -> int:
+    """Detach route_id and bus_id from past days' luggage so past routes/buses can be deleted/cleaned safely."""
+    today_start = datetime.combine(date.today(), time.min)
+    res = session.execute(
+        text("UPDATE luggage SET route_id = NULL, bus_id = NULL WHERE created_at < :today_start AND (route_id IS NOT NULL OR bus_id IS NOT NULL)"),
+        {"today_start": today_start},
+    )
+    session.commit()
+    return res.rowcount
+
+
 def list_luggage_for_bus(
     session: Session,
     bus_id: int,
     query: str = "",
     limit: int = 100,
 ) -> list[Luggage]:
+    today_start = datetime.combine(date.today(), time.min)
     q = (
         session.query(Luggage)
         .options(joinedload(Luggage.route), joinedload(Luggage.bus))
-        .filter(Luggage.bus_id == bus_id)
+        .filter(Luggage.bus_id == bus_id, Luggage.created_at >= today_start)
     )
     if query:
         like = f"%{query}%"
@@ -163,9 +188,12 @@ def list_luggage_for_bus(
 
 
 def list_recent_luggage(session: Session, limit: int = 50) -> list[Luggage]:
+    """Returns today's luggage items created after 00:00."""
+    today_start = datetime.combine(date.today(), time.min)
     return (
         session.query(Luggage)
         .options(joinedload(Luggage.route), joinedload(Luggage.bus))
+        .filter(Luggage.created_at >= today_start)
         .order_by(Luggage.created_at.desc())
         .limit(limit)
         .all()
