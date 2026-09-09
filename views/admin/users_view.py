@@ -131,6 +131,9 @@ class UsersView(QWidget):
     def _build(self) -> None:
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
+        agency_label = ""
+        if current_session.agency:
+            agency_label = current_session.agency.name
         toolbar, self.search, _ = page_toolbar(
             "Utilisateurs",
             search_placeholder="Nom, login, téléphone…",
@@ -138,6 +141,10 @@ class UsersView(QWidget):
             add_label="Nouveau caissier",
             on_add=self._add,
         )
+        if agency_label:
+            agency_badge = QLabel(f"Agence : {agency_label}")
+            agency_badge.setStyleSheet(f"color:{T.TEXT_SECONDARY}; font-size:11px; font-weight:600;")
+            toolbar.insertWidget(1, agency_badge)
         for label, kind in (("CSV", "csv"), ("Excel", "xlsx"), ("PDF", "pdf")):
             btn = secondary_btn(label)
             btn.clicked.connect(lambda checked=False, k=kind: self._export(k))

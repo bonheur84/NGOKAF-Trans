@@ -30,6 +30,9 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agency_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agencies.id"), nullable=True, index=True
+    )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)

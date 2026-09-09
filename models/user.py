@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.session import Base
@@ -13,6 +13,9 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agency_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agencies.id"), nullable=True, index=True
+    )
     nom: Mapped[str] = mapped_column(String(100), nullable=False)
     prenom: Mapped[str] = mapped_column(String(100), nullable=False)
     telephone: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -26,6 +29,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    agency = relationship("Agency", back_populates="users")
     tickets = relationship("Ticket", back_populates="cashier")
     luggage_items = relationship("Luggage", back_populates="cashier")
 

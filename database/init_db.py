@@ -5,6 +5,7 @@ import logging
 
 from database.connection import init_connection
 from database.migrate import migrate_schema, migrate_nullable
+from database.migrate_agencies import run_agency_migration
 from database.session import Base, get_session
 
 import models  # noqa: F401
@@ -23,8 +24,9 @@ def init_database() -> None:
     logger.info("All tables created/verified.")
     session = get_session()
     try:
-        ensure_default_settings(session)
+        run_agency_migration(engine, session)
         ensure_default_admin(session)
+        ensure_default_settings(session)
         session.commit()
     except Exception:
         session.rollback()

@@ -14,6 +14,9 @@ class Route(Base):
     __tablename__ = "routes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agency_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agencies.id"), nullable=True, index=True
+    )
     ville_depart: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     ville_arrivee: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     heure_depart: Mapped[time] = mapped_column(Time, nullable=False)
@@ -25,6 +28,7 @@ class Route(Base):
     statut: Mapped[str] = mapped_column(String(20), default="actif", nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
+    agency = relationship("Agency", back_populates="routes")
     bus = relationship("Bus", back_populates="routes")
     driver = relationship("Driver", back_populates="routes")
     tickets = relationship("Ticket", back_populates="route", passive_deletes=True)

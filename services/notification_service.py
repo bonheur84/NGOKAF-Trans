@@ -4,24 +4,31 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from models.notification import Notification, NotificationType
+from services.agency_context import current_agency_id
 
 
 def notify(
     session: Session,
     title: str,
-    message: str,
+    message: str | int | None = None,
     user_id: int | None = None,
     notif_type: str = NotificationType.INFO,
     icon: str = "bell",
+    agency_id: int | None = None,
 ) -> Notification:
     """Create a new notification with type and icon."""
+    if message is None or isinstance(message, int):
+        user_id = message if isinstance(message, int) else user_id
+        message = title
+    aid = agency_id if agency_id is not None else current_agency_id()
     n = Notification(
         title=title,
-        message=message,
+        message=str(message),
         user_id=user_id,
+        agency_id=aid,
         notif_type=notif_type,
         icon=icon,
-        lu=False
+        lu=False,
     )
     session.add(n)
     session.flush()
@@ -36,7 +43,7 @@ def notify_bus_full(session: Session, bus_id: int, bus_name: str, user_id: int |
         message=f"Le bus {bus_name} est maintenant complet (100% des sièges occupés).",
         user_id=user_id,
         notif_type=NotificationType.BUS_FULL,
-        icon="bus"
+        icon="bus",
     )
 
 
@@ -48,7 +55,7 @@ def notify_seats_low(session: Session, bus_id: int, bus_name: str, seats_remaini
         message=f"Le bus {bus_name} n'a plus que {seats_remaining} sièges disponibles.",
         user_id=user_id,
         notif_type=NotificationType.SEATS_LOW,
-        icon="chair"
+        icon="chair",
     )
 
 
@@ -60,7 +67,7 @@ def notify_backup_success(session: Session, backup_name: str, user_id: int | Non
         message=f"La sauvegarde {backup_name} a été créée avec succès.",
         user_id=user_id,
         notif_type=NotificationType.BACKUP_SUCCESS,
-        icon="check-circle"
+        icon="check-circle",
     )
 
 
@@ -72,7 +79,7 @@ def notify_backup_failed(session: Session, error: str, user_id: int | None = Non
         message=f"La sauvegarde a échoué : {error}",
         user_id=user_id,
         notif_type=NotificationType.BACKUP_FAILED,
-        icon="alert-circle"
+        icon="alert-circle",
     )
 
 
@@ -84,7 +91,7 @@ def notify_ticket_cancelled(session: Session, ticket_number: str, user_id: int |
         message=f"Le billet {ticket_number} a été annulé.",
         user_id=user_id,
         notif_type=NotificationType.TICKET_CANCELLED,
-        icon="x-circle"
+        icon="x-circle",
     )
 
 
@@ -96,7 +103,7 @@ def notify_bagage_registered(session: Session, bagage_number: str, user_id: int 
         message=f"Le bagage {bagage_number} a été enregistré.",
         user_id=user_id,
         notif_type=NotificationType.BAGAGE_REGISTERED,
-        icon="package"
+        icon="package",
     )
 
 
@@ -108,7 +115,7 @@ def notify_trajet_cancelled(session: Session, trajet_name: str, user_id: int | N
         message=f"Le trajet {trajet_name} a été annulé.",
         user_id=user_id,
         notif_type=NotificationType.TRAJET_CANCELLED,
-        icon="map"
+        icon="map",
     )
 
 
@@ -120,7 +127,7 @@ def notify_conducteur_unavailable(session: Session, conducteur_name: str, user_i
         message=f"Le conducteur {conducteur_name} est marqué comme indisponible.",
         user_id=user_id,
         notif_type=NotificationType.CONDUCTEUR_UNAVAILABLE,
-        icon="user-x"
+        icon="user-x",
     )
 
 
@@ -132,8 +139,16 @@ def notify_critical_error(session: Session, error: str, user_id: int | None = No
         message=f"Une erreur critique est survenue : {error}",
         user_id=user_id,
         notif_type=NotificationType.CRITICAL_ERROR,
-        icon="alert-triangle"
+        icon="alert-triangle",
     )
+
+
+def _agency_filter(q, agency_id: int | None):
+    if agency_id is not None:
+        return q.filter(
+            (Notification.agency_id == agency_id) | (Notification.agency_id.is_(None))
+        )
+    return q
 
 
 def list_notifications(
@@ -141,10 +156,13 @@ def list_notifications(
     user_id: int | None = None,
     unread_only: bool = False,
     limit: int = 50,
+    agency_id: int | None = None,
 ) -> list[Notification]:
+    aid = agency_id if agency_id is not None else current_agency_id()
     q = session.query(Notification)
+    q = _agency_filter(q, aid)
     if user_id is not None:
-        Q = q.filter(
+        q = q.filter(
             (Notification.user_id == user_id) | (Notification.user_id.is_(None))
         )
     if unread_only:
@@ -152,8 +170,10 @@ def list_notifications(
     return q.order_by(Notification.created_at.desc()).limit(limit).all()
 
 
-def unread_count(session: Session, user_id: int | None = None) -> int:
+def unread_count(session: Session, user_id: int | None = None, agency_id: int | None = None) -> int:
+    aid = agency_id if agency_id is not None else current_agency_id()
     q = session.query(Notification).filter(Notification.lu.is_(False))
+    q = _agency_filter(q, aid)
     if user_id is not None:
         q = q.filter(
             (Notification.user_id == user_id) | (Notification.user_id.is_(None))
@@ -161,8 +181,10 @@ def unread_count(session: Session, user_id: int | None = None) -> int:
     return q.count()
 
 
-def mark_all_read(session: Session, user_id: int | None = None) -> None:
+def mark_all_read(session: Session, user_id: int | None = None, agency_id: int | None = None) -> None:
+    aid = agency_id if agency_id is not None else current_agency_id()
     q = session.query(Notification).filter(Notification.lu.is_(False))
+    q = _agency_filter(q, aid)
     if user_id is not None:
         q = q.filter(
             (Notification.user_id == user_id) | (Notification.user_id.is_(None))
@@ -183,8 +205,10 @@ def delete_notification(session: Session, notif_id: int) -> None:
         session.delete(n)
 
 
-def delete_all_read(session: Session, user_id: int | None = None) -> None:
+def delete_all_read(session: Session, user_id: int | None = None, agency_id: int | None = None) -> None:
+    aid = agency_id if agency_id is not None else current_agency_id()
     q = session.query(Notification).filter(Notification.lu.is_(True))
+    q = _agency_filter(q, aid)
     if user_id is not None:
         q = q.filter(
             (Notification.user_id == user_id) | (Notification.user_id.is_(None))

@@ -21,6 +21,7 @@ from config.settings import settings
 from database.session import get_session
 from resources import theme as T
 from services import notification_service
+from services.agency_context import agency_display_name
 from services.session_store import current_session
 from utils.formatters import format_long_date
 from utils.icons import fa_icon, ICONS
@@ -95,7 +96,7 @@ class AdminWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"{settings.AGENCY_NAME} — Administration")
+        self.setWindowTitle(f"{agency_display_name(settings.AGENCY_NAME)} — Administration")
         self.resize(1440, 900)
         self.setMinimumSize(1200, 720)
         self.setStyleSheet(f"QMainWindow {{ background: {T.BG_MAIN}; }}")

@@ -13,6 +13,7 @@ ALTERS: dict[str, list[tuple[str, str]]] = {
     "users": [
         ("email", "VARCHAR(150) NULL"),
         ("adresse", "VARCHAR(255) NULL"),
+        ("agency_id", "INT NULL"),
     ],
     "buses": [
         ("plaque", "VARCHAR(40) NULL"),
@@ -22,19 +23,38 @@ ALTERS: dict[str, list[tuple[str, str]]] = {
         ("couleur", "VARCHAR(40) NULL"),
         ("photo_path", "VARCHAR(512) NULL"),
         ("date_achat", "DATE NULL"),
+        ("agency_id", "INT NULL"),
     ],
     "routes": [
         ("heure_arrivee", "TIME NULL"),
         ("distance_km", "DECIMAL(10,2) NULL"),
         ("driver_id", "INT NULL"),
+        ("agency_id", "INT NULL"),
     ],
     "notifications": [
         ("title", "VARCHAR(200) NULL"),
         ("notif_type", "VARCHAR(50) NULL DEFAULT 'info'"),
         ("icon", "VARCHAR(50) NULL DEFAULT 'bell'"),
+        ("agency_id", "INT NULL"),
     ],
     "expenses": [
         ("piece_jointe", "VARCHAR(500) NULL"),
+        ("agency_id", "INT NULL"),
+    ],
+    "drivers": [
+        ("agency_id", "INT NULL"),
+    ],
+    "tickets": [
+        ("agency_id", "INT NULL"),
+    ],
+    "luggage": [
+        ("agency_id", "INT NULL"),
+    ],
+    "sequences": [
+        ("agency_id", "INT NULL"),
+    ],
+    "app_settings": [
+        ("agency_id", "INT NULL"),
     ],
 }
 

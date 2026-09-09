@@ -8,8 +8,17 @@ from sqlalchemy.orm import Session, joinedload
 
 from models.bus import Bus, Seat
 from models.route import Route
+from services.agency_context import current_agency_id, require_agency_id
+from services.agency_service import get_agency, validate_route_cities
 from services.audit_service import log_audit
 from services.notification_service import notify
+
+
+def _bus_code_taken(session: Session, code: str, agency_id: int, exclude_id: int | None = None) -> bool:
+    q = session.query(Bus).filter(Bus.code == code.strip().upper(), Bus.agency_id == agency_id)
+    if exclude_id:
+        q = q.filter(Bus.id != exclude_id)
+    return q.first() is not None
 
 
 def create_bus_with_seats(
@@ -27,14 +36,17 @@ def create_bus_with_seats(
     photo_path: str | None = None,
     date_achat: date | None = None,
     statut: str = "actif",
+    agency_id: int | None = None,
 ) -> Bus:
-    if session.query(Bus).filter(Bus.code == code.strip().upper()).first():
+    aid = agency_id if agency_id is not None else require_agency_id()
+    if _bus_code_taken(session, code, aid):
         raise ValueError(f"Le code de bus « {code.strip().upper()} » existe déjà.")
     bus = Bus(
         code=code.strip().upper(),
         capacite=capacite,
         layout=layout,
         statut=statut,
+        agency_id=aid,
         plaque=(plaque or "").strip() or None,
         marque=(marque or "").strip() or None,
         modele=(modele or "").strip() or None,
@@ -61,10 +73,12 @@ def regenerate_seats(session: Session, bus: Bus, capacite: int) -> None:
 
 
 def update_bus(session: Session, bus: Bus, user_id: int | None = None, **fields) -> Bus:
+    aid = current_agency_id()
+    if aid is not None and bus.agency_id != aid:
+        raise ValueError("Bus hors de votre agence.")
     if "code" in fields and fields["code"]:
         new_code = fields["code"].strip().upper()
-        other = session.query(Bus).filter(Bus.code == new_code, Bus.id != bus.id).first()
-        if other:
+        if _bus_code_taken(session, new_code, bus.agency_id, bus.id):
             raise ValueError(f"Le code de bus « {new_code} » existe déjà.")
     cap = fields.pop("capacite", None)
     for k, v in fields.items():
@@ -102,6 +116,9 @@ def reactivate_bus(session: Session, bus: Bus, user_id: int | None = None) -> Bu
 
 
 def delete_bus(session: Session, bus: Bus, user_id: int | None = None) -> None:
+    aid = current_agency_id()
+    if aid is not None and bus.agency_id != aid:
+        raise ValueError("Bus hors de votre agence.")
     from models.ticket import Ticket
     from models.luggage import Luggage
     from models.route import Route
@@ -141,8 +158,12 @@ def list_buses(
     *,
     search: str = "",
     statut: str | None = None,
+    agency_id: int | None = None,
 ) -> list[Bus]:
+    aid = agency_id if agency_id is not None else current_agency_id()
     q = session.query(Bus)
+    if aid is not None:
+        q = q.filter(Bus.agency_id == aid)
     if statut:
         q = q.filter(Bus.statut == statut)
     if search.strip():
@@ -156,8 +177,14 @@ def list_buses(
     return q.order_by(Bus.code).all()
 
 
-def get_bus(session: Session, bus_id: int) -> Bus | None:
-    return session.get(Bus, bus_id)
+def get_bus(session: Session, bus_id: int, agency_id: int | None = None) -> Bus | None:
+    bus = session.get(Bus, bus_id)
+    if not bus:
+        return None
+    aid = agency_id if agency_id is not None else current_agency_id()
+    if aid is not None and bus.agency_id != aid:
+        return None
+    return bus
 
 
 def create_route(
@@ -173,7 +200,15 @@ def create_route(
     distance_km: Decimal | None = None,
     driver_id: int | None = None,
     statut: str = "actif",
+    agency_id: int | None = None,
 ) -> Route:
+    aid = agency_id if agency_id is not None else require_agency_id()
+    agency = get_agency(session, aid)
+    if agency:
+        validate_route_cities(agency, ville_depart, ville_arrivee)
+    bus = get_bus(session, bus_id, aid)
+    if not bus:
+        raise ValueError("Bus introuvable dans votre agence.")
     route = Route(
         ville_depart=ville_depart.strip(),
         ville_arrivee=ville_arrivee.strip(),
@@ -184,6 +219,7 @@ def create_route(
         bus_id=bus_id,
         driver_id=driver_id,
         statut=statut,
+        agency_id=aid,
     )
     session.add(route)
     session.flush()
@@ -197,6 +233,14 @@ def create_route(
 
 
 def update_route(session: Session, route: Route, user_id: int | None = None, **fields) -> Route:
+    aid = current_agency_id()
+    if aid is not None and route.agency_id != aid:
+        raise ValueError("Trajet hors de votre agence.")
+    agency = get_agency(session, route.agency_id) if route.agency_id else None
+    dep = fields.get("ville_depart", route.ville_depart)
+    arr = fields.get("ville_arrivee", route.ville_arrivee)
+    if agency:
+        validate_route_cities(agency, dep, arr)
     for k, v in fields.items():
         if hasattr(route, k):
             if isinstance(v, str) and k in ("ville_depart", "ville_arrivee"):
@@ -231,6 +275,9 @@ def set_route_statut(
 
 
 def delete_route(session: Session, route: Route, user_id: int | None = None) -> None:
+    aid = current_agency_id()
+    if aid is not None and route.agency_id != aid:
+        raise ValueError("Trajet hors de votre agence.")
     from models.ticket import Ticket
     from models.luggage import Luggage
     from sqlalchemy import text
@@ -263,11 +310,15 @@ def list_routes(
     search: str = "",
     statut: str | None = None,
     ville: str = "",
+    agency_id: int | None = None,
 ) -> list[Route]:
+    aid = agency_id if agency_id is not None else current_agency_id()
     q = (
         session.query(Route)
         .options(joinedload(Route.bus), joinedload(Route.driver))
     )
+    if aid is not None:
+        q = q.filter(Route.agency_id == aid)
     if statut:
         q = q.filter(Route.statut == statut)
     if ville.strip():
@@ -284,15 +335,23 @@ def list_routes(
     return q.order_by(Route.ville_depart, Route.heure_depart).all()
 
 
-def list_active_routes(session: Session) -> list[Route]:
-    return (
+def list_active_routes(session: Session, agency_id: int | None = None) -> list[Route]:
+    aid = agency_id if agency_id is not None else current_agency_id()
+    q = (
         session.query(Route)
         .options(joinedload(Route.bus))
         .filter(Route.statut == "actif")
-        .order_by(Route.ville_depart, Route.heure_depart)
-        .all()
     )
+    if aid is not None:
+        q = q.filter(Route.agency_id == aid)
+    return q.order_by(Route.ville_depart, Route.heure_depart).all()
 
 
-def get_route(session: Session, route_id: int) -> Route | None:
-    return session.get(Route, route_id)
+def get_route(session: Session, route_id: int, agency_id: int | None = None) -> Route | None:
+    route = session.get(Route, route_id)
+    if not route:
+        return None
+    aid = agency_id if agency_id is not None else current_agency_id()
+    if aid is not None and route.agency_id != aid:
+        return None
+    return route

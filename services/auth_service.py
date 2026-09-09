@@ -35,6 +35,7 @@ def create_cashier(
     username: str,
     password: str,
     photo_path: str | None = None,
+    agency_id: int | None = None,
 ) -> User:
     user = User(
         nom=nom.strip(),
@@ -45,6 +46,7 @@ def create_cashier(
         photo_path=photo_path,
         role="caissier",
         statut="actif",
+        agency_id=agency_id,
     )
     session.add(user)
     session.flush()
@@ -95,28 +97,12 @@ def clear_remember_username() -> None:
 
 
 def ensure_default_admin(session: Session) -> User | None:
-    """Create default admin/admin123 if no administrator exists."""
-    admin = (
+    """Ensure agency admin accounts exist after migration."""
+    return (
         session.query(User)
-        .filter(User.role == "administrateur")
+        .filter(User.username == "admin_lubumbashi")
         .first()
     )
-    if admin:
-        return admin
-    user = User(
-        nom="Admin",
-        prenom="Système",
-        telephone=None,
-        email="admin@ngokaf.local",
-        username="admin",
-        password_hash=hash_password("admin123"),
-        role="administrateur",
-        statut="actif",
-    )
-    session.add(user)
-    session.flush()
-    log_audit(session, "seed", "user", user.id, user.id, {"username": "admin"})
-    return user
 
 
 def count_admins(session: Session) -> int:

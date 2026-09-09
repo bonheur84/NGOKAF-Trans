@@ -1,4 +1,5 @@
 """ORM models package."""
+from models.agency import Agency
 from models.user import User
 from models.bus import Bus, Seat
 from models.driver import Driver
@@ -12,6 +13,7 @@ from models.app_setting import AppSetting
 from models.expense import Expense
 
 __all__ = [
+    "Agency",
     "User",
     "Bus",
     "Seat",

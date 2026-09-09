@@ -4,6 +4,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from models.user import User
+from services.agency_context import current_agency_id, require_agency_id
 from services.auth_service import hash_password
 from services.audit_service import log_audit
 from services.notification_service import notify
@@ -15,8 +16,12 @@ def list_users(
     role: str | None = None,
     search: str = "",
     statut: str | None = None,
+    agency_id: int | None = None,
 ) -> list[User]:
+    aid = agency_id if agency_id is not None else current_agency_id()
     q = session.query(User)
+    if aid is not None:
+        q = q.filter(User.agency_id == aid)
     if role:
         q = q.filter(User.role == role)
     if statut:
@@ -33,8 +38,14 @@ def list_users(
     return q.order_by(User.role.desc(), User.nom).all()
 
 
-def get_user(session: Session, user_id: int) -> User | None:
-    return session.get(User, user_id)
+def get_user(session: Session, user_id: int, agency_id: int | None = None) -> User | None:
+    user = session.get(User, user_id)
+    if not user:
+        return None
+    aid = agency_id if agency_id is not None else current_agency_id()
+    if aid is not None and user.agency_id != aid:
+        return None
+    return user
 
 
 def create_user(
@@ -50,7 +61,9 @@ def create_user(
     adresse: str | None = None,
     photo_path: str | None = None,
     actor_id: int | None = None,
+    agency_id: int | None = None,
 ) -> User:
+    aid = agency_id if agency_id is not None else require_agency_id()
     if session.query(User).filter(User.username == username.strip()).first():
         raise ValueError(f"Le nom d'utilisateur « {username} » existe déjà.")
     user = User(
@@ -64,6 +77,7 @@ def create_user(
         adresse=(adresse or "").strip() or None,
         photo_path=photo_path,
         statut="actif",
+        agency_id=aid,
     )
     session.add(user)
     session.flush()
@@ -75,11 +89,14 @@ def create_user(
         actor_id,
         {"username": user.username, "role": role},
     )
-    notify(session, f"Compte créé : {user.username} ({role})", actor_id)
+    notify(session, f"Compte créé : {user.username} ({role})", actor_id, agency_id=aid)
     return user
 
 
 def update_user(session: Session, user: User, actor_id: int | None = None, **fields) -> User:
+    aid = current_agency_id()
+    if aid is not None and user.agency_id != aid:
+        raise ValueError("Utilisateur hors de votre agence.")
     if "username" in fields and fields["username"]:
         other = (
             session.query(User)
@@ -104,32 +121,42 @@ def update_user(session: Session, user: User, actor_id: int | None = None, **fie
 def reset_password(
     session: Session, user: User, new_password: str, actor_id: int | None = None
 ) -> None:
+    aid = current_agency_id()
+    if aid is not None and user.agency_id != aid:
+        raise ValueError("Utilisateur hors de votre agence.")
     user.password_hash = hash_password(new_password)
     session.flush()
     log_audit(session, "reset_password", "user", user.id, actor_id)
-    notify(session, f"Mot de passe réinitialisé pour {user.username}", actor_id)
+    notify(session, f"Mot de passe réinitialisé pour {user.username}", actor_id, agency_id=user.agency_id)
 
 
 def set_user_statut(
     session: Session, user: User, statut: str, actor_id: int | None = None
 ) -> User:
+    aid = current_agency_id()
+    if aid is not None and user.agency_id != aid:
+        raise ValueError("Utilisateur hors de votre agence.")
     user.statut = statut
     session.flush()
     log_audit(session, "update", "user", user.id, actor_id, {"statut": statut})
     label = "bloqué" if statut != "actif" else "réactivé"
-    notify(session, f"Utilisateur {user.username} {label}", actor_id)
+    notify(session, f"Utilisateur {user.username} {label}", actor_id, agency_id=user.agency_id)
     return user
 
 
 def delete_user(session: Session, user: User, actor_id: int | None = None) -> None:
+    aid = current_agency_id()
+    if aid is not None and user.agency_id != aid:
+        raise ValueError("Utilisateur hors de votre agence.")
     if user.role == "administrateur":
-        admins = session.query(User).filter(User.role == "administrateur").count()
-        if admins <= 1:
-            raise ValueError("Impossible de supprimer le dernier administrateur.")
+        q = session.query(User).filter(User.role == "administrateur")
+        if aid is not None:
+            q = q.filter(User.agency_id == aid)
+        if q.count() <= 1:
+            raise ValueError("Impossible de supprimer le dernier administrateur de l'agence.")
     uid = user.id
     uname = user.username
 
-    # Nullify FK references to preserve historical data (revenue, tickets, luggage, etc.)
     from sqlalchemy import text
 
     session.execute(text("UPDATE audit_logs SET user_id = NULL WHERE user_id = :uid"), {"uid": uid})
@@ -141,7 +168,7 @@ def delete_user(session: Session, user: User, actor_id: int | None = None) -> No
     session.flush()
 
     log_audit(session, "delete", "user", uid, actor_id, {"username": uname})
-    notify(session, f"Utilisateur supprimé : {uname}", actor_id)
+    notify(session, f"Utilisateur supprimé : {uname}", actor_id, agency_id=user.agency_id)
     session.flush()
     session.delete(user)
 

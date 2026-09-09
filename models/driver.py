@@ -13,6 +13,9 @@ class Driver(Base):
     __tablename__ = "drivers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agency_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agencies.id"), nullable=True, index=True
+    )
     nom: Mapped[str] = mapped_column(String(100), nullable=False)
     prenom: Mapped[str] = mapped_column(String(100), nullable=False)
     telephone: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -25,6 +28,7 @@ class Driver(Base):
     disponibilite: Mapped[str] = mapped_column(String(30), default="disponible", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
+    agency = relationship("Agency", back_populates="drivers")
     bus = relationship("Bus", back_populates="drivers")
     routes = relationship("Route", back_populates="driver")
 

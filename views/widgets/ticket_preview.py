@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel, QHBoxLayout
 
 from config.settings import settings
 from resources import theme as T
+from services.session_store import current_session
 from utils.formatters import MONTHS_FR, format_fc
 
 
@@ -100,6 +101,32 @@ class TicketPreview(QFrame):
         footer.setStyleSheet(f"font-size:11px; color:{T.TEXT_SECONDARY};")
         lay.addWidget(footer)
         lay.addStretch()
+        self._load_agency_profile()
+
+    def _load_agency_profile(self) -> None:
+        name = settings.AGENCY_NAME
+        phone = settings.AGENCY_PHONE
+        address = settings.AGENCY_ADDRESS
+        if current_session.agency:
+            name = current_session.agency.name
+            phone = current_session.agency.phone or phone
+            address = current_session.agency.address or address
+        else:
+            try:
+                from database.session import get_session
+                from services import settings_service
+
+                session = get_session()
+                aid = current_session.user.agency_id if current_session.user else None
+                name = settings_service.get_setting(session, "agency_name", name, agency_id=aid)
+                phone = settings_service.get_setting(session, "agency_phone", phone, agency_id=aid)
+                address = settings_service.get_setting(session, "agency_address", address, agency_id=aid)
+                session.close()
+            except Exception:
+                pass
+        self.agency.setText(name)
+        self.phone.setText(phone or "")
+        self.address.setText(address or "")
 
     def update_preview(
         self,

@@ -51,12 +51,17 @@ def generate_ticket_pdf(ticket, path: Path | None = None) -> Path:
     # Dynamic Agency profile from DB settings
     agency_name = settings.AGENCY_NAME
     agency_address = settings.AGENCY_ADDRESS
+    agency_id = getattr(ticket, "agency_id", None)
     try:
         from database.session import get_session
         from services import settings_service
         session = get_session()
-        agency_name = settings_service.get_setting(session, "agency_name", settings.AGENCY_NAME)
-        agency_address = settings_service.get_setting(session, "agency_address", settings.AGENCY_ADDRESS)
+        agency_name = settings_service.get_setting(
+            session, "agency_name", settings.AGENCY_NAME, agency_id=agency_id
+        )
+        agency_address = settings_service.get_setting(
+            session, "agency_address", settings.AGENCY_ADDRESS, agency_id=agency_id
+        )
         session.close()
     except Exception:
         pass

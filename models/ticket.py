@@ -13,10 +13,13 @@ from database.session import Base
 class Ticket(Base):
     __tablename__ = "tickets"
     __table_args__ = (
-        UniqueConstraint("date_vente", "numero", name="uq_ticket_day_number"),
+        UniqueConstraint("agency_id", "date_vente", "numero", name="uq_ticket_agency_day_number"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agency_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agencies.id"), nullable=True, index=True
+    )
     numero: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     date_vente: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     passenger_name: Mapped[str] = mapped_column(String(150), nullable=False)

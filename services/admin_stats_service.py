@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, Query
 
 from models.bus import Bus
 from models.driver import Driver
@@ -13,6 +13,7 @@ from models.luggage import Luggage
 from models.route import Route
 from models.ticket import Ticket
 from models.user import User
+from services.agency_context import current_agency_id
 
 
 def _money(v) -> Decimal:
@@ -21,57 +22,77 @@ def _money(v) -> Decimal:
     return Decimal(v)
 
 
-def dashboard_kpis(session: Session) -> dict:
+def _aid(agency_id: int | None) -> int | None:
+    return agency_id if agency_id is not None else current_agency_id()
+
+
+def _filter_agency(q: Query, model, agency_id: int | None) -> Query:
+    aid = _aid(agency_id)
+    if aid is not None and hasattr(model, "agency_id"):
+        return q.filter(model.agency_id == aid)
+    return q
+
+
+def dashboard_kpis(session: Session, agency_id: int | None = None) -> dict:
+    aid = _aid(agency_id)
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
     year_start = date(today.year, 1, 1)
 
-    tickets_today = (
-        session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id))
-        .filter(Ticket.date_vente == today, Ticket.statut == "vendu")
-        .one()
+    tq = session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
+        Ticket.date_vente == today, Ticket.statut == "vendu"
     )
-    luggage_today = (
-        session.query(func.coalesce(func.sum(Luggage.total), 0))
-        .filter(func.date(Luggage.created_at) == today)
-        .scalar()
+    tq = _filter_agency(tq, Ticket, aid)
+    tickets_today = tq.one()
+
+    lq = session.query(func.coalesce(func.sum(Luggage.total), 0)).filter(
+        func.date(Luggage.created_at) == today
     )
-    week_rev = (
-        session.query(func.coalesce(func.sum(Ticket.price), 0))
-        .filter(Ticket.date_vente >= week_start, Ticket.statut == "vendu")
-        .scalar()
+    lq = _filter_agency(lq, Luggage, aid)
+    luggage_today = lq.scalar()
+
+    wq = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
+        Ticket.date_vente >= week_start, Ticket.statut == "vendu"
     )
-    week_lug = (
-        session.query(func.coalesce(func.sum(Luggage.total), 0))
-        .filter(func.date(Luggage.created_at) >= week_start)
-        .scalar()
+    wq = _filter_agency(wq, Ticket, aid)
+    week_rev = wq.scalar()
+
+    wlq = session.query(func.coalesce(func.sum(Luggage.total), 0)).filter(
+        func.date(Luggage.created_at) >= week_start
     )
-    year_rev = (
-        session.query(func.coalesce(func.sum(Ticket.price), 0))
-        .filter(Ticket.date_vente >= year_start, Ticket.statut == "vendu")
-        .scalar()
+    wlq = _filter_agency(wlq, Luggage, aid)
+    week_lug = wlq.scalar()
+
+    yq = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
+        Ticket.date_vente >= year_start, Ticket.statut == "vendu"
     )
-    year_lug = (
-        session.query(func.coalesce(func.sum(Luggage.total), 0))
-        .filter(func.date(Luggage.created_at) >= year_start)
-        .scalar()
+    yq = _filter_agency(yq, Ticket, aid)
+    year_rev = yq.scalar()
+
+    ylq = session.query(func.coalesce(func.sum(Luggage.total), 0)).filter(
+        func.date(Luggage.created_at) >= year_start
     )
+    ylq = _filter_agency(ylq, Luggage, aid)
+    year_lug = ylq.scalar()
+
+    voy_q = session.query(Ticket).filter(Ticket.statut == "vendu")
+    bag_q = session.query(Luggage)
+    bus_q = session.query(Bus).filter(Bus.statut == "actif")
+    drv_q = session.query(Driver).filter(Driver.statut == "actif")
+    route_q = session.query(Route).filter(Route.statut == "actif")
+    cai_q = session.query(User).filter(User.role == "caissier", User.statut == "actif")
 
     return {
         "recettes_jour": _money(tickets_today[0]) + _money(luggage_today),
         "billets_jour": int(tickets_today[1] or 0),
         "recettes_hebdo": _money(week_rev) + _money(week_lug),
         "recettes_annuel": _money(year_rev) + _money(year_lug),
-        "voyageurs": session.query(Ticket)
-        .filter(Ticket.statut == "vendu")
-        .count(),
-        "bagages": session.query(Luggage).count(),
-        "bus": session.query(Bus).filter(Bus.statut == "actif").count(),
-        "conducteurs": session.query(Driver).filter(Driver.statut == "actif").count(),
-        "trajets": session.query(Route).filter(Route.statut == "actif").count(),
-        "caissiers": session.query(User)
-        .filter(User.role == "caissier", User.statut == "actif")
-        .count(),
+        "voyageurs": _filter_agency(voy_q, Ticket, aid).count(),
+        "bagages": _filter_agency(bag_q, Luggage, aid).count(),
+        "bus": _filter_agency(bus_q, Bus, aid).count(),
+        "conducteurs": _filter_agency(drv_q, Driver, aid).count(),
+        "trajets": _filter_agency(route_q, Route, aid).count(),
+        "caissiers": _filter_agency(cai_q, User, aid).count(),
     }
 
 
@@ -80,31 +101,27 @@ def revenue_by_day(
     days: int = 30,
     *,
     end: date | None = None,
+    agency_id: int | None = None,
 ) -> list[tuple[date, Decimal]]:
+    aid = _aid(agency_id)
     end = end or date.today()
     start = end - timedelta(days=days - 1)
-    ticket_rows = (
-        session.query(Ticket.date_vente, func.coalesce(func.sum(Ticket.price), 0))
-        .filter(
-            Ticket.date_vente >= start,
-            Ticket.date_vente <= end,
-            Ticket.statut == "vendu",
-        )
-        .group_by(Ticket.date_vente)
-        .all()
+    tq = session.query(Ticket.date_vente, func.coalesce(func.sum(Ticket.price), 0)).filter(
+        Ticket.date_vente >= start,
+        Ticket.date_vente <= end,
+        Ticket.statut == "vendu",
     )
-    luggage_rows = (
-        session.query(
-            func.date(Luggage.created_at),
-            func.coalesce(func.sum(Luggage.total), 0),
-        )
-        .filter(
-            func.date(Luggage.created_at) >= start,
-            func.date(Luggage.created_at) <= end,
-        )
-        .group_by(func.date(Luggage.created_at))
-        .all()
+    ticket_rows = _filter_agency(tq, Ticket, aid).group_by(Ticket.date_vente).all()
+
+    lq = session.query(
+        func.date(Luggage.created_at),
+        func.coalesce(func.sum(Luggage.total), 0),
+    ).filter(
+        func.date(Luggage.created_at) >= start,
+        func.date(Luggage.created_at) <= end,
     )
+    luggage_rows = _filter_agency(lq, Luggage, aid).group_by(func.date(Luggage.created_at)).all()
+
     totals: dict[date, Decimal] = {}
     for d, amt in ticket_rows:
         totals[d] = totals.get(d, Decimal("0")) + _money(amt)
@@ -121,18 +138,17 @@ def revenue_by_day(
     return out
 
 
-def revenue_breakdown(session: Session, days: int = 30) -> dict[str, Decimal]:
+def revenue_breakdown(session: Session, days: int = 30, agency_id: int | None = None) -> dict[str, Decimal]:
+    aid = _aid(agency_id)
     start = date.today() - timedelta(days=days - 1)
-    tickets = (
-        session.query(func.coalesce(func.sum(Ticket.price), 0))
-        .filter(Ticket.date_vente >= start, Ticket.statut == "vendu")
-        .scalar()
+    tq = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
+        Ticket.date_vente >= start, Ticket.statut == "vendu"
     )
-    luggage = (
-        session.query(func.coalesce(func.sum(Luggage.total), 0))
-        .filter(func.date(Luggage.created_at) >= start)
-        .scalar()
+    tickets = _filter_agency(tq, Ticket, aid).scalar()
+    lq = session.query(func.coalesce(func.sum(Luggage.total), 0)).filter(
+        func.date(Luggage.created_at) >= start
     )
+    luggage = _filter_agency(lq, Luggage, aid).scalar()
     return {
         "Billets": _money(tickets),
         "Bagages": _money(luggage),
@@ -146,10 +162,12 @@ def sales_by_route(
     *,
     start: date | None = None,
     end: date | None = None,
+    agency_id: int | None = None,
 ) -> list[tuple[str, int, Decimal]]:
+    aid = _aid(agency_id)
     end = end or date.today()
     start = start or (end - timedelta(days=days - 1))
-    rows = (
+    q = (
         session.query(
             Route.ville_depart,
             Route.ville_arrivee,
@@ -162,19 +180,24 @@ def sales_by_route(
             Ticket.date_vente <= end,
             Ticket.statut == "vendu",
         )
-        .group_by(Route.id, Route.ville_depart, Route.ville_arrivee)
+    )
+    if aid is not None:
+        q = q.filter(Ticket.agency_id == aid, Route.agency_id == aid)
+    rows = (
+        q.group_by(Route.id, Route.ville_depart, Route.ville_arrivee)
         .order_by(func.sum(Ticket.price).desc())
         .limit(limit)
         .all()
     )
-    return [
-        (f"{a} → {b}", int(c or 0), _money(s)) for a, b, c, s in rows
-    ]
+    return [(f"{a} → {b}", int(c or 0), _money(s)) for a, b, c, s in rows]
 
 
-def top_cashiers(session: Session, days: int = 30, limit: int = 5) -> list[tuple[str, Decimal, int]]:
+def top_cashiers(
+    session: Session, days: int = 30, limit: int = 5, agency_id: int | None = None
+) -> list[tuple[str, Decimal, int]]:
+    aid = _aid(agency_id)
     start = date.today() - timedelta(days=days - 1)
-    rows = (
+    q = (
         session.query(
             User.prenom,
             User.nom,
@@ -183,7 +206,11 @@ def top_cashiers(session: Session, days: int = 30, limit: int = 5) -> list[tuple
         )
         .join(Ticket, Ticket.cashier_id == User.id)
         .filter(Ticket.date_vente >= start, Ticket.statut == "vendu")
-        .group_by(User.id, User.prenom, User.nom)
+    )
+    if aid is not None:
+        q = q.filter(User.agency_id == aid, Ticket.agency_id == aid)
+    rows = (
+        q.group_by(User.id, User.prenom, User.nom)
         .order_by(func.sum(Ticket.price).desc())
         .limit(limit)
         .all()
@@ -191,24 +218,19 @@ def top_cashiers(session: Session, days: int = 30, limit: int = 5) -> list[tuple
     return [(f"{p} {n}".strip(), _money(s), int(c or 0)) for p, n, s, c in rows]
 
 
-def period_kpis(session: Session, start: date, end: date) -> dict:
-    tickets = (
-        session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id))
-        .filter(
-            Ticket.date_vente >= start,
-            Ticket.date_vente <= end,
-            Ticket.statut == "vendu",
-        )
-        .one()
+def period_kpis(session: Session, start: date, end: date, agency_id: int | None = None) -> dict:
+    aid = _aid(agency_id)
+    tq = session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
+        Ticket.date_vente >= start,
+        Ticket.date_vente <= end,
+        Ticket.statut == "vendu",
     )
-    luggage = (
-        session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id))
-        .filter(
-            func.date(Luggage.created_at) >= start,
-            func.date(Luggage.created_at) <= end,
-        )
-        .one()
+    tickets = _filter_agency(tq, Ticket, aid).one()
+    lq = session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id)).filter(
+        func.date(Luggage.created_at) >= start,
+        func.date(Luggage.created_at) <= end,
     )
+    luggage = _filter_agency(lq, Luggage, aid).one()
     return {
         "recettes_billets": _money(tickets[0]),
         "nb_billets": int(tickets[1] or 0),
@@ -218,45 +240,48 @@ def period_kpis(session: Session, start: date, end: date) -> dict:
     }
 
 
-def fleet_revenue(session: Session) -> Decimal:
-    t = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
-        Ticket.statut == "vendu"
-    ).scalar()
-    l = session.query(func.coalesce(func.sum(Luggage.total), 0)).scalar()
+def fleet_revenue(session: Session, agency_id: int | None = None) -> Decimal:
+    aid = _aid(agency_id)
+    tq = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(Ticket.statut == "vendu")
+    lq = session.query(func.coalesce(func.sum(Luggage.total), 0))
+    t = _filter_agency(tq, Ticket, aid).scalar()
+    l = _filter_agency(lq, Luggage, aid).scalar()
     return _money(t) + _money(l)
 
 
-def sales_heatmap(session: Session, days: int = 30) -> list[tuple[int, int, int]]:
+def sales_heatmap(session: Session, days: int = 30, agency_id: int | None = None) -> list[tuple[int, int, int]]:
+    aid = _aid(agency_id)
     start = date.today() - timedelta(days=days - 1)
-    rows = (
-        session.query(
-            func.dayofweek(Ticket.date_vente),
-            func.hour(Ticket.created_at),
-            func.count(Ticket.id)
-        )
-        .filter(Ticket.date_vente >= start, Ticket.statut == "vendu")
-        .group_by(func.dayofweek(Ticket.date_vente), func.hour(Ticket.created_at))
-        .all()
-    )
+    q = session.query(
+        func.dayofweek(Ticket.date_vente),
+        func.hour(Ticket.created_at),
+        func.count(Ticket.id),
+    ).filter(Ticket.date_vente >= start, Ticket.statut == "vendu")
+    rows = _filter_agency(q, Ticket, aid).group_by(
+        func.dayofweek(Ticket.date_vente), func.hour(Ticket.created_at)
+    ).all()
     return [(int(d), int(h), int(c)) for d, h, c in rows]
 
 
-def filling_rate_by_route(session: Session) -> list[tuple[str, float]]:
+def filling_rate_by_route(session: Session, agency_id: int | None = None) -> list[tuple[str, float]]:
     from sqlalchemy import distinct
-    rows = (
+
+    aid = _aid(agency_id)
+    q = (
         session.query(
             Route.ville_depart,
             Route.ville_arrivee,
             func.count(Ticket.id),
             Bus.capacite,
-            func.count(distinct(Ticket.travel_date))
+            func.count(distinct(Ticket.travel_date)),
         )
         .join(Bus, Route.bus_id == Bus.id)
         .outerjoin(Ticket, Ticket.route_id == Route.id)
         .filter(Route.statut == "actif")
-        .group_by(Route.id, Route.ville_depart, Route.ville_arrivee, Bus.capacite)
-        .all()
     )
+    if aid is not None:
+        q = q.filter(Route.agency_id == aid)
+    rows = q.group_by(Route.id, Route.ville_depart, Route.ville_arrivee, Bus.capacite).all()
     out = []
     for dep, arr, t_count, cap, date_count in rows:
         date_count = max(1, int(date_count or 1))
@@ -266,14 +291,14 @@ def filling_rate_by_route(session: Session) -> list[tuple[str, float]]:
     return out
 
 
-def comparative_revenue(session: Session, days: int = 30) -> tuple[list[Decimal], list[Decimal]]:
+def comparative_revenue(
+    session: Session, days: int = 30, agency_id: int | None = None
+) -> tuple[list[Decimal], list[Decimal]]:
     today = date.today()
     start_curr = today - timedelta(days=days - 1)
-    curr_rev = revenue_by_day(session, days, end=today)
-    
+    curr_rev = revenue_by_day(session, days, end=today, agency_id=agency_id)
     end_prev = start_curr - timedelta(days=1)
-    prev_rev = revenue_by_day(session, days, end=end_prev)
-    
+    prev_rev = revenue_by_day(session, days, end=end_prev, agency_id=agency_id)
     curr_vals = [v for _, v in curr_rev]
     prev_vals = [v for _, v in prev_rev]
     return curr_vals, prev_vals

@@ -51,18 +51,18 @@ if not exist "dist\NGOKAF_TRANS\NGOKAF_TRANS.exe" (
 echo.
 echo [5/5] Compilation Inno Setup (Setup_Ngokaf_Trans.exe^)...
 
-set ISCC=
-if exist "%LocalAppData%\Programs\Inno Setup 6\ISCC.exe" set ISCC=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe
-if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe
-if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe
+set "ISCC="
+if exist "%LocalAppData%\Programs\Inno Setup 6\ISCC.exe" set "ISCC=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe"
+if exist "%SystemDrive%\Program Files (x86)\Inno Setup 6\ISCC.exe" set "ISCC=%SystemDrive%\Program Files (x86)\Inno Setup 6\ISCC.exe"
+if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
 
 if not defined ISCC (
-  for /f "delims=" %%i in ('where ISCC.exe 2^>nul') do if not defined ISCC set ISCC=%%i
+  for /f "delims=" %%i in ('where ISCC.exe 2^>nul') do set "ISCC=%%i"
 )
 
 if not defined ISCC (
   echo.
-  echo [ERREUR] Inno Setup 6 introuvable (ISCC.exe).
+  echo [ERREUR] Inno Setup 6 introuvable - ISCC.exe
   echo.
   echo Telechargez et installez Inno Setup 6 :
   echo   https://jrsoftware.org/isdl.php

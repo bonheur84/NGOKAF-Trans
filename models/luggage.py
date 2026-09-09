@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.session import Base
@@ -12,9 +12,13 @@ from database.session import Base
 
 class Luggage(Base):
     __tablename__ = "luggage"
+    __table_args__ = (UniqueConstraint("agency_id", "numero", name="uq_luggage_agency_numero"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    numero: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    agency_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agencies.id"), nullable=True, index=True
+    )
+    numero: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     sender_name: Mapped[str] = mapped_column(String(150), nullable=False)
     sender_phone: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     recipient_name: Mapped[str] = mapped_column(String(150), nullable=False)

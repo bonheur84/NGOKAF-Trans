@@ -11,9 +11,13 @@ from database.session import Base
 
 class Bus(Base):
     __tablename__ = "buses"
+    __table_args__ = (UniqueConstraint("agency_id", "code", name="uq_bus_agency_code"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    agency_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agencies.id"), nullable=True, index=True
+    )
+    code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     plaque: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     marque: Mapped[str | None] = mapped_column(String(80), nullable=True)
     modele: Mapped[str | None] = mapped_column(String(80), nullable=True)
@@ -26,6 +30,7 @@ class Bus(Base):
     statut: Mapped[str] = mapped_column(String(20), default="actif", nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
+    agency = relationship("Agency", back_populates="buses")
     seats = relationship("Seat", back_populates="bus", cascade="all, delete-orphan")
     routes = relationship("Route", back_populates="bus")
     tickets = relationship("Ticket", back_populates="bus")

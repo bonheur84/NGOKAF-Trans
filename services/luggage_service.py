@@ -12,34 +12,34 @@ from models.sequence import Sequence
 from models.route import Route
 from models.bus import Bus
 from models.user import User
+from services.agency_context import current_agency_id
 from services.audit_service import log_audit
 from services.settings_service import get_setting
 
 
-def next_luggage_number(session: Session) -> str:
+def next_luggage_number(session: Session, agency_id: int | None = None) -> str:
     today = date.today()
-    seq = (
-        session.query(Sequence)
-        .filter(Sequence.name == "luggage", Sequence.seq_date == today)
-        .with_for_update()
-        .first()
-    )
+    aid = agency_id
+    q = session.query(Sequence).filter(Sequence.name == "luggage", Sequence.seq_date == today)
+    if aid is not None:
+        q = q.filter(Sequence.agency_id == aid)
+    seq = q.with_for_update().first()
     if not seq:
-        # Determine starting value from existing luggage numbers to avoid duplicates
-        last = session.query(Luggage.numero).order_by(Luggage.id.desc()).first()
+        last_q = session.query(Luggage.numero)
+        if aid is not None:
+            last_q = last_q.filter(Luggage.agency_id == aid)
+        last = last_q.order_by(Luggage.id.desc()).first()
         start_value = 0
         if last:
             try:
-                # numero format is BG-XXXXXX, extract the numeric part
                 start_value = int(last[0].split("-")[-1])
             except (ValueError, IndexError):
                 start_value = 0
-        seq = Sequence(name="luggage", seq_date=today, value=start_value)
+        seq = Sequence(name="luggage", seq_date=today, value=start_value, agency_id=aid)
         session.add(seq)
         session.flush()
     seq.value += 1
     session.flush()
-    # Format BG-002490 style with globally incrementing counter padded
     return f"BG-{seq.value:06d}"
 
 
@@ -48,11 +48,12 @@ def calculate_fees(
     poids: Decimal,
     frais_base: Decimal | None = None,
     weight_rate: Decimal | None = None,
+    agency_id: int | None = None,
 ) -> tuple[Decimal, Decimal, Decimal]:
     if frais_base is None:
-        frais_base = Decimal(get_setting(session, "luggage_base_fee", "2500"))
+        frais_base = Decimal(get_setting(session, "luggage_base_fee", "2500", agency_id=agency_id))
     if weight_rate is None:
-        weight_rate = Decimal(get_setting(session, "luggage_weight_rate", "200"))
+        weight_rate = Decimal(get_setting(session, "luggage_weight_rate", "200", agency_id=agency_id))
     # Free allowance 5 kg then surcharge per kg
     free = Decimal("5")
     over = max(Decimal("0"), poids - free)
@@ -78,14 +79,20 @@ def register_luggage(
     fragile: bool,
     cashier: User,
 ) -> Luggage:
+    if not cashier.agency_id:
+        raise ValueError("Caissier sans agence assignée.")
     route = session.get(Route, route_id)
     if not route:
         raise ValueError("Trajet introuvable.")
+    if route.agency_id != cashier.agency_id:
+        raise ValueError("Ce trajet n'appartient pas à votre agence.")
     bus = session.get(Bus, route.bus_id)
     if not bus:
         raise ValueError("Bus introuvable.")
+    if bus.agency_id != cashier.agency_id:
+        raise ValueError("Ce bus n'appartient pas à votre agence.")
 
-    base, supp, calc_total = calculate_fees(session, poids, frais_base)
+    base, supp, calc_total = calculate_fees(session, poids, frais_base, agency_id=cashier.agency_id)
     if supplement_poids is not None:
         supp = Decimal(supplement_poids)
     if total is not None:
@@ -94,7 +101,7 @@ def register_luggage(
         calc_total = (Decimal(frais_base) + supp).quantize(Decimal("0.01"))
         base = Decimal(frais_base)
 
-    numero = next_luggage_number(session)
+    numero = next_luggage_number(session, cashier.agency_id)
     barcode = f"{date.today().strftime('%d%m%Y')}-{numero.split('-')[-1]}"
     qr = (
         f"BAGAGE:{numero}|EXP:{sender_name}|DEST:{recipient_name}"
@@ -119,6 +126,7 @@ def register_luggage(
         barcode=barcode,
         qr_payload=qr,
         cashier_id=cashier.id,
+        agency_id=cashier.agency_id,
         statut="enregistre",
         fragile=fragile,
     )
@@ -142,6 +150,9 @@ def update_luggage_status(
     item = session.get(Luggage, luggage_id)
     if not item:
         raise ValueError("Bagage introuvable.")
+    aid = current_agency_id()
+    if aid is not None and item.agency_id != aid:
+        raise ValueError("Bagage hors de votre agence.")
     item.statut = statut
     log_audit(session, "status", "luggage", item.id, user_id, {"statut": statut})
     session.commit()
@@ -169,13 +180,17 @@ def list_luggage_for_bus(
     bus_id: int,
     query: str = "",
     limit: int = 100,
+    agency_id: int | None = None,
 ) -> list[Luggage]:
+    aid = agency_id if agency_id is not None else current_agency_id()
     today_start = datetime.combine(date.today(), time.min)
     q = (
         session.query(Luggage)
         .options(joinedload(Luggage.route), joinedload(Luggage.bus))
         .filter(Luggage.bus_id == bus_id, Luggage.created_at >= today_start)
     )
+    if aid is not None:
+        q = q.filter(Luggage.agency_id == aid)
     if query:
         like = f"%{query}%"
         q = q.filter(
@@ -187,43 +202,43 @@ def list_luggage_for_bus(
     return q.order_by(Luggage.created_at.desc()).limit(limit).all()
 
 
-def list_recent_luggage(session: Session, limit: int = 50) -> list[Luggage]:
+def list_recent_luggage(session: Session, limit: int = 50, agency_id: int | None = None) -> list[Luggage]:
     """Returns today's luggage items created after 00:00."""
+    aid = agency_id if agency_id is not None else current_agency_id()
     today_start = datetime.combine(date.today(), time.min)
-    return (
+    q = (
         session.query(Luggage)
         .options(joinedload(Luggage.route), joinedload(Luggage.bus))
         .filter(Luggage.created_at >= today_start)
-        .order_by(Luggage.created_at.desc())
-        .limit(limit)
-        .all()
     )
+    if aid is not None:
+        q = q.filter(Luggage.agency_id == aid)
+    return q.order_by(Luggage.created_at.desc()).limit(limit).all()
 
 
-def today_luggage_stats(session: Session) -> dict:
+def today_luggage_stats(session: Session, agency_id: int | None = None) -> dict:
+    aid = agency_id if agency_id is not None else current_agency_id()
     today = date.today()
     start = datetime.combine(today, datetime.min.time())
-    count = (
-        session.query(Luggage)
-        .filter(Luggage.created_at >= start, Luggage.statut != "annule")
-        .count()
+    count_q = session.query(Luggage).filter(Luggage.created_at >= start, Luggage.statut != "annule")
+    weight_q = session.query(func.coalesce(func.sum(Luggage.poids), 0)).filter(
+        Luggage.created_at >= start, Luggage.statut != "annule"
     )
-    weight = (
-        session.query(func.coalesce(func.sum(Luggage.poids), 0))
-        .filter(Luggage.created_at >= start, Luggage.statut != "annule")
-        .scalar()
-    )
+    if aid is not None:
+        count_q = count_q.filter(Luggage.agency_id == aid)
+        weight_q = weight_q.filter(Luggage.agency_id == aid)
+    count = count_q.count()
+    weight = weight_q.scalar()
     yesterday = today.fromordinal(today.toordinal() - 1)
     y_start = datetime.combine(yesterday, datetime.min.time())
-    y_count = (
-        session.query(Luggage)
-        .filter(
-            Luggage.created_at >= y_start,
-            Luggage.created_at < start,
-            Luggage.statut != "annule",
-        )
-        .count()
+    y_count_q = session.query(Luggage).filter(
+        Luggage.created_at >= y_start,
+        Luggage.created_at < start,
+        Luggage.statut != "annule",
     )
+    if aid is not None:
+        y_count_q = y_count_q.filter(Luggage.agency_id == aid)
+    y_count = y_count_q.count()
     if y_count > 0:
         growth = ((count - y_count) / y_count) * 100.0
         sign = "+" if growth >= 0 else ""

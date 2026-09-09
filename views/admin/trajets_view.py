@@ -77,6 +77,11 @@ class RouteDialog(QDialog):
             if idx >= 0:
                 self.driver.setCurrentIndex(idx)
             self.statut.setCurrentText(route.statut)
+        elif current_session.agency:
+            self.depart.setText(current_session.agency.city)
+            self.arrivee.setText(current_session.agency.destination_city)
+            self.depart.setReadOnly(True)
+            self.arrivee.setReadOnly(True)
 
         form.addRow("Ville départ", self.depart)
         form.addRow("Ville arrivée", self.arrivee)

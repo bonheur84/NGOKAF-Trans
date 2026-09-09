@@ -14,6 +14,9 @@ class Expense(Base):
     __tablename__ = "expenses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agency_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agencies.id"), nullable=True, index=True
+    )
     date_paiement: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     categorie: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     montant: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)

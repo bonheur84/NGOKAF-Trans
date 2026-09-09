@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from database.session import get_session
 from services import auth_service
+from services.agency_service import get_agency
 from services.session_store import current_session
 
 
@@ -13,6 +14,10 @@ class AuthController:
             user = auth_service.authenticate(session, username, password)
             if user:
                 current_session.user = user
+                if user.agency_id:
+                    current_session.agency = get_agency(session, user.agency_id)
+                else:
+                    current_session.agency = None
             return user
         finally:
             session.close()

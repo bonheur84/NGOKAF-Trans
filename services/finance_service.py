@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from models.expense import Expense
 from models.luggage import Luggage
 from models.ticket import Ticket
+from services.agency_context import current_agency_id, require_agency_id
 
 
 def _money(v) -> Decimal:
@@ -28,14 +29,21 @@ def add_expense(
     fournisseur: str | None = None,
     piece_jointe: str | None = None,
     created_by: int | None = None,
+    agency_id: int | None = None,
 ) -> Expense:
     """Add a new expense to the database."""
     from models.user import User
+
+    aid = agency_id if agency_id is not None else current_agency_id()
+    if aid is None:
+        aid = require_agency_id()
     valid_creator_id = None
-    if created_by and session.query(User).filter(User.id == created_by).first():
-        valid_creator_id = created_by
-    else:
-        first_user = session.query(User).first()
+    if created_by:
+        creator = session.query(User).filter(User.id == created_by).first()
+        if creator and (creator.agency_id == aid or creator.agency_id is None):
+            valid_creator_id = created_by
+    if valid_creator_id is None:
+        first_user = session.query(User).filter(User.agency_id == aid).first()
         if first_user:
             valid_creator_id = first_user.id
 
@@ -48,6 +56,7 @@ def add_expense(
         fournisseur=fournisseur,
         piece_jointe=piece_jointe,
         created_by=valid_creator_id,
+        agency_id=aid,
     )
     session.add(expense)
     session.commit()
@@ -61,9 +70,13 @@ def get_expenses_by_period(
     start_date: date | None = None,
     end_date: date | None = None,
     categorie: str | None = None,
+    agency_id: int | None = None,
 ) -> list[Expense]:
     """Get expenses filtered by period and optionally category."""
+    aid = agency_id if agency_id is not None else current_agency_id()
     query = session.query(Expense)
+    if aid is not None:
+        query = query.filter(Expense.agency_id == aid)
     
     if period == "day":
         target_date = start_date or date.today()
@@ -103,107 +116,100 @@ def get_revenue_by_period(
     period: str = "day",
     start_date: date | None = None,
     end_date: date | None = None,
+    agency_id: int | None = None,
 ) -> dict:
     """Calculate detailed revenue (tickets + luggage) for a period."""
+    aid = agency_id if agency_id is not None else current_agency_id()
+
+    def _ticket_q(base_q):
+        return base_q.filter(Ticket.agency_id == aid) if aid is not None else base_q
+
+    def _lug_q(base_q):
+        return base_q.filter(Luggage.agency_id == aid) if aid is not None else base_q
+
     if period == "day":
         target_date = start_date or date.today()
-        ticket_rev = (
-            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id))
-            .filter(Ticket.date_vente == target_date, Ticket.statut == "vendu")
-            .one()
-        )
-        luggage_rev = (
-            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id))
-            .filter(func.date(Luggage.created_at) == target_date)
-            .one()
-        )
+        ticket_rev = _ticket_q(
+            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
+                Ticket.date_vente == target_date, Ticket.statut == "vendu"
+            )
+        ).one()
+        luggage_rev = _lug_q(
+            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id)).filter(
+                func.date(Luggage.created_at) == target_date
+            )
+        ).one()
     elif period == "week":
         if start_date is None:
             today = date.today()
             start_date = today - timedelta(days=today.weekday())
         if end_date is None:
             end_date = start_date + timedelta(days=6)
-        ticket_rev = (
-            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id))
-            .filter(
+        ticket_rev = _ticket_q(
+            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
                 Ticket.date_vente >= start_date,
                 Ticket.date_vente <= end_date,
                 Ticket.statut == "vendu",
             )
-            .one()
-        )
-        luggage_rev = (
-            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id))
-            .filter(
+        ).one()
+        luggage_rev = _lug_q(
+            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id)).filter(
                 func.date(Luggage.created_at) >= start_date,
                 func.date(Luggage.created_at) <= end_date,
             )
-            .one()
-        )
+        ).one()
     elif period == "month":
         if start_date is None:
             today = date.today()
             start_date = date(today.year, today.month, 1)
         if end_date is None:
             end_date = date(start_date.year, start_date.month + 1, 1) - timedelta(days=1)
-        ticket_rev = (
-            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id))
-            .filter(
+        ticket_rev = _ticket_q(
+            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
                 Ticket.date_vente >= start_date,
                 Ticket.date_vente <= end_date,
                 Ticket.statut == "vendu",
             )
-            .one()
-        )
-        luggage_rev = (
-            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id))
-            .filter(
+        ).one()
+        luggage_rev = _lug_q(
+            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id)).filter(
                 func.date(Luggage.created_at) >= start_date,
                 func.date(Luggage.created_at) <= end_date,
             )
-            .one()
-        )
+        ).one()
     elif period == "year":
         if start_date is None:
             today = date.today()
             start_date = date(today.year, 1, 1)
         if end_date is None:
             end_date = date(start_date.year, 12, 31)
-        ticket_rev = (
-            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id))
-            .filter(
+        ticket_rev = _ticket_q(
+            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
                 Ticket.date_vente >= start_date,
                 Ticket.date_vente <= end_date,
                 Ticket.statut == "vendu",
             )
-            .one()
-        )
-        luggage_rev = (
-            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id))
-            .filter(
+        ).one()
+        luggage_rev = _lug_q(
+            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id)).filter(
                 func.date(Luggage.created_at) >= start_date,
                 func.date(Luggage.created_at) <= end_date,
             )
-            .one()
-        )
+        ).one()
     elif start_date and end_date:
-        ticket_rev = (
-            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id))
-            .filter(
+        ticket_rev = _ticket_q(
+            session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
                 Ticket.date_vente >= start_date,
                 Ticket.date_vente <= end_date,
                 Ticket.statut == "vendu",
             )
-            .one()
-        )
-        luggage_rev = (
-            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id))
-            .filter(
+        ).one()
+        luggage_rev = _lug_q(
+            session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id)).filter(
                 func.date(Luggage.created_at) >= start_date,
                 func.date(Luggage.created_at) <= end_date,
             )
-            .one()
-        )
+        ).one()
     else:
         ticket_rev = (Decimal("0"), 0)
         luggage_rev = (Decimal("0"), 0)
@@ -332,14 +338,23 @@ def get_monthly_financial_data(
 
 def delete_expense(session: Session, expense_id: int) -> bool:
     """Delete an expense by ID."""
+    aid = current_agency_id()
     expense = session.query(Expense).filter(Expense.id == expense_id).first()
-    if expense:
-        session.delete(expense)
-        session.commit()
-        return True
-    return False
+    if not expense:
+        return False
+    if aid is not None and expense.agency_id != aid:
+        return False
+    session.delete(expense)
+    session.commit()
+    return True
 
 
 def get_expense_by_id(session: Session, expense_id: int) -> Expense | None:
     """Get an expense by ID."""
-    return session.query(Expense).filter(Expense.id == expense_id).first()
+    aid = current_agency_id()
+    expense = session.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        return None
+    if aid is not None and expense.agency_id != aid:
+        return None
+    return expense

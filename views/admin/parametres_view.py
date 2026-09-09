@@ -121,6 +121,10 @@ class ParametresView(QWidget):
         sub = QLabel("Configurez le profil de votre agence, la sécurité et les sauvegardes.")
         sub.setStyleSheet(f"color:{T.TEXT_SECONDARY}; font-size:12px;")
         lay.addWidget(sub)
+        if current_session.agency:
+            agency_info = QLabel(f"Agence connectée : {current_session.agency.name}")
+            agency_info.setStyleSheet(f"color:{T.PRIMARY_ALT}; font-size:11px; font-weight:600;")
+            lay.addWidget(agency_info)
 
         lay.addWidget(_separator())
 

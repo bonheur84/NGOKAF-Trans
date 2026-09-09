@@ -15,16 +15,14 @@ from models.user import User
 from services.audit_service import log_audit
 
 
-def next_ticket_number(session: Session, sale_date: date | None = None) -> str:
+def next_ticket_number(session: Session, sale_date: date | None = None, agency_id: int | None = None) -> str:
     sale_date = sale_date or date.today()
-    seq = (
-        session.query(Sequence)
-        .filter(Sequence.name == "ticket", Sequence.seq_date == sale_date)
-        .with_for_update()
-        .first()
-    )
+    q = session.query(Sequence).filter(Sequence.name == "ticket", Sequence.seq_date == sale_date)
+    if agency_id is not None:
+        q = q.filter(Sequence.agency_id == agency_id)
+    seq = q.with_for_update().first()
     if not seq:
-        seq = Sequence(name="ticket", seq_date=sale_date, value=0)
+        seq = Sequence(name="ticket", seq_date=sale_date, value=0, agency_id=agency_id)
         session.add(seq)
         session.flush()
     seq.value += 1
@@ -81,12 +79,18 @@ def sell_ticket(
     travel_date: date,
     cashier: User,
 ) -> Ticket:
+    if not cashier.agency_id:
+        raise ValueError("Caissier sans agence assignée.")
     route = session.get(Route, route_id)
     if not route:
         raise ValueError("Trajet introuvable.")
+    if route.agency_id != cashier.agency_id:
+        raise ValueError("Ce trajet n'appartient pas à votre agence.")
     bus = session.get(Bus, route.bus_id)
     if not bus:
         raise ValueError("Bus introuvable.")
+    if bus.agency_id != cashier.agency_id:
+        raise ValueError("Ce bus n'appartient pas à votre agence.")
     if seat_number < 1 or seat_number > bus.capacite:
         raise ValueError("Numéro de siège invalide.")
     occupied = occupied_seats(session, bus.id, route.id, travel_date)
@@ -94,7 +98,7 @@ def sell_ticket(
         raise ValueError("Ce siège est déjà occupé.")
 
     sale_date = date.today()
-    numero = next_ticket_number(session, sale_date)
+    numero = next_ticket_number(session, sale_date, cashier.agency_id)
     heure = route.heure_depart.strftime("%H:%M")
     qr = build_qr_payload(
         numero,
@@ -120,6 +124,7 @@ def sell_ticket(
         travel_date=travel_date,
         qr_payload=qr,
         cashier_id=cashier.id,
+        agency_id=cashier.agency_id,
         statut="vendu",
     )
     session.add(ticket)
@@ -133,7 +138,6 @@ def sell_ticket(
         {"numero": numero, "seat": seat_number, "price": str(price)},
     )
 
-    # Check if bus is now full
     new_occupied = occupied_seats(session, bus.id, route.id, travel_date)
     is_bus_full = len(new_occupied) >= bus.capacite
     if is_bus_full:
@@ -157,6 +161,8 @@ def cancel_ticket(
     ticket = session.get(Ticket, ticket_id)
     if not ticket:
         raise ValueError("Billet introuvable.")
+    if ticket.agency_id != cashier.agency_id:
+        raise ValueError("Ce billet n'appartient pas à votre agence.")
     if ticket.statut == "annule":
         raise ValueError("Billet déjà annulé.")
     ticket.statut = "annule"
@@ -191,12 +197,18 @@ def search_tickets(
     phone: str | None = None,
     numero: str | None = None,
     limit: int = 200,
+    agency_id: int | None = None,
 ) -> list[Ticket]:
+    from services.agency_context import current_agency_id
+
+    aid = agency_id if agency_id is not None else current_agency_id()
     q = session.query(Ticket).options(
         joinedload(Ticket.route),
         joinedload(Ticket.bus),
         joinedload(Ticket.cashier),
     )
+    if aid is not None:
+        q = q.filter(Ticket.agency_id == aid)
     if query:
         like = f"%{query}%"
         q = q.filter(
@@ -219,11 +231,19 @@ def search_tickets(
     return q.order_by(Ticket.created_at.desc()).limit(limit).all()
 
 
-def today_sales_stats(session: Session) -> dict:
+def today_sales_stats(session: Session, agency_id: int | None = None) -> dict:
+    from services.agency_context import current_agency_id
+
+    aid = agency_id if agency_id is not None else current_agency_id()
     today = date.today()
     q = session.query(Ticket).filter(Ticket.date_vente == today, Ticket.statut == "vendu")
+    if aid is not None:
+        q = q.filter(Ticket.agency_id == aid)
     count = q.count()
-    total = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
+    total_q = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
         Ticket.date_vente == today, Ticket.statut == "vendu"
-    ).scalar()
+    )
+    if aid is not None:
+        total_q = total_q.filter(Ticket.agency_id == aid)
+    total = total_q.scalar()
     return {"billets": count, "recettes": Decimal(total or 0)}
