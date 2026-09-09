@@ -31,14 +31,7 @@ jobs:
       
     - name: Install Inno Setup
       run: |
-        # Download Inno Setup
-        $url = "https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe"
-        $output = "innosetup.exe"
-        Invoke-WebRequest -Uri $url -OutFile $output
-        # Silent install
-        Start-Process -FilePath $output -ArgumentList "/VERYSILENT /DIR=C:\InnoSetup" -Wait
-        # Add to PATH
-        echo "C:\InnoSetup" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        choco install innosetup --no-progress
         
     - name: Generate icon
       run: python scripts/make_icon.py
@@ -48,7 +41,14 @@ jobs:
       
     - name: Build installer with Inno Setup
       run: |
-        $iscc = "C:\InnoSetup\ISCC.exe"
+        $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+        if (-not (Test-Path $iscc)) {
+          $cmd = Get-Command iscc.exe -ErrorAction SilentlyContinue
+          if ($cmd) { $iscc = $cmd.Source }
+        }
+        if (-not (Test-Path $iscc)) {
+          $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe"
+        }
         if (Test-Path $iscc) {
           & $iscc "installer\setup.iss"
         } else {
@@ -70,7 +70,7 @@ jobs:
         }
         
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           Setup_Ngokaf_Trans_v${{ steps.get_version.outputs.version }}.exe
