@@ -300,8 +300,10 @@ def export_pdfs(png_map: dict[str, Path]) -> None:
 def install_ui_logo(symbol_png: Path) -> Path:
     IMAGES.mkdir(parents=True, exist_ok=True)
     dest = IMAGES / "logo.png"
-    shutil.copy2(symbol_png, dest)
+    if not dest.exists():
+        shutil.copy2(symbol_png, dest)
     return dest
+
 
 
 def main() -> int:

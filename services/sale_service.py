@@ -14,6 +14,10 @@ from models.bus import Bus
 from models.user import User
 from services.audit_service import log_audit
 
+# Seuil d'alerte : avertir quand il reste ce nombre de sièges ou moins
+SEATS_ALERT_THRESHOLD = 5
+
+
 
 def next_ticket_number(session: Session, sale_date: date | None = None, agency_id: int | None = None) -> str:
     sale_date = sale_date or date.today()
@@ -140,15 +144,30 @@ def sell_ticket(
 
     new_occupied = occupied_seats(session, bus.id, route.id, travel_date)
     is_bus_full = len(new_occupied) >= bus.capacite
+    seats_remaining = max(0, bus.capacite - len(new_occupied))
+
+    # Notify when few seats remain (but not when full — that has its own dialog)
+    if not is_bus_full and seats_remaining <= SEATS_ALERT_THRESHOLD:
+        from services.notification_service import notify_seats_low
+        notify_seats_low(
+            session,
+            bus.id,
+            f"{bus.code} ({route.short_label})",
+            seats_remaining,
+            cashier.id,
+        )
+
     if is_bus_full:
-        bus.statut = "inactif"
-        route.statut = "inactif"
+        # Notify only — deactivation is confirmed by the user in the UI
         from services.notification_service import notify_bus_full
         notify_bus_full(session, bus.id, f"{bus.code} ({route.short_label})", cashier.id)
 
     session.commit()
     session.refresh(ticket)
     ticket.is_bus_full = is_bus_full
+    ticket.seats_remaining = seats_remaining
+    ticket._bus = bus
+    ticket._route = route
     return ticket
 
 

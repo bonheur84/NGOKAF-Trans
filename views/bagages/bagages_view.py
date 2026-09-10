@@ -45,6 +45,7 @@ from services.export_service import (
 )
 from utils.formatters import format_fc
 from utils.icons import fa_icon, apply_button_icon, ICONS
+from utils.sounds import play_error, play_warning, play_print
 from views.widgets.card import Card
 
 
@@ -434,30 +435,37 @@ class BagagesView(QWidget):
                     .one()
                 )
                 path = print_luggage(item, user.id if user else None)
+                play_print()
                 QMessageBox.information(self, "Impression", str(path))
             else:
                 update_luggage_status(session, luggage_id, key, user.id if user else None)
                 self.refresh()
         except Exception as e:
             session.rollback()
+            play_error()
             QMessageBox.critical(self, "Erreur", str(e))
         finally:
             session.close()
 
     def _save(self) -> None:
         if not self.selected_route_id:
+            play_warning()
             QMessageBox.warning(self, "Bagages", "Sélectionnez un trajet.")
             return
         if not self.sender.text().strip():
+            play_warning()
             QMessageBox.warning(self, "Bagages", "Indiquez le nom du voyageur.")
             return
         if not self.sender_phone.text().strip():
+            play_warning()
             QMessageBox.warning(self, "Bagages", "Indiquez le téléphone du voyageur.")
             return
         if not self.description.toPlainText().strip():
+            play_warning()
             QMessageBox.warning(self, "Bagages", "Décrivez le colis.")
             return
         if self.montant.value() <= 0:
+            play_warning()
             QMessageBox.warning(self, "Bagages", "Saisissez le montant estimé.")
             return
         user = current_session.user
@@ -498,6 +506,7 @@ class BagagesView(QWidget):
                 .one()
             )
             path = print_luggage(item, user.id)
+            play_print()
             QMessageBox.information(
                 self,
                 "Bagage enregistré",
@@ -511,6 +520,7 @@ class BagagesView(QWidget):
             self.refresh()
         except Exception as e:
             session.rollback()
+            play_error()
             QMessageBox.critical(self, "Erreur", str(e))
         finally:
             session.close()

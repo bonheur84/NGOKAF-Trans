@@ -40,7 +40,7 @@ class TicketPreview(QFrame):
         logo_path = settings.logo_path
         if logo_path.exists():
             pix = QPixmap(str(logo_path)).scaled(
-                70, 55, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                90, 85, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
             self.logo.setPixmap(pix)
         lay.addWidget(self.logo)

@@ -87,6 +87,247 @@ def export_tickets_excel(tickets, path: Path) -> Path:
     return path
 
 
+def export_bus_manifest_excel(
+    tickets: list,
+    bus_code: str,
+    route_label: str,
+    travel_date,
+    path: Path,
+    bus_capacity: int = 0,
+) -> Path:
+    """Export an executive-designed passenger manifest Excel spreadsheet.
+
+    Generates a beautifully styled, print-ready Excel document:
+    - Dark Navy title banner & indigo route metadata bar
+    - Executive KPI metadata summary block (Passengers, Capacity, Fill %, Revenue)
+    - Styled data grid with zebra striping, custom column widths & borders
+    - Full summary footer and official signature lines for driver & agency manager
+    - Configured landscape print view (Fit-to-page A4)
+    """
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Manifeste Passagers"
+
+    # Enable gridlines & page setup
+    ws.sheet_view.showGridLines = True
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+
+    travel_str = (
+        travel_date.strftime("%d/%m/%Y")
+        if hasattr(travel_date, "strftime")
+        else str(travel_date)
+    )
+    total_passengers = len(tickets)
+    total_revenue = sum(float(t.price) for t in tickets)
+    capacity_val = bus_capacity or total_passengers
+    fill_rate = int((total_passengers / capacity_val * 100)) if capacity_val else 100
+
+    # ── 1. Main Title Banner ──────────────────────────────────────────────────
+    ws.merge_cells("A1:I1")
+    title_cell = ws["A1"]
+    title_cell.value = "NGOKAF TRANS  —  MANIFESTE OFFICIEL DES PASSAGERS"
+    title_cell.font = Font(name="Calibri", bold=True, size=15, color="FFFFFF")
+    title_cell.fill = PatternFill("solid", fgColor="0F172A")  # Midnight Dark Navy
+    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 34
+
+    # ── 2. Trip Sub-Banner ───────────────────────────────────────────────────
+    ws.merge_cells("A2:I2")
+    sub_cell = ws["A2"]
+    sub_cell.value = f"BUS : {bus_code}   |   TRAJET : {route_label.upper()}   |   DATE DE VOYAGE : {travel_str}"
+    sub_cell.font = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
+    sub_cell.fill = PatternFill("solid", fgColor="1E40AF")  # Royal Blue
+    sub_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[2].height = 24
+
+    ws.row_dimensions[3].height = 8  # Spacer
+
+    # ── 3. KPI Summary Box (Rows 4 & 5) ──────────────────────────────────────
+    kpi_fill = PatternFill("solid", fgColor="F1F5F9")
+    kpi_border_side = Side(style="thin", color="CBD5E1")
+    kpi_border = Border(left=kpi_border_side, right=kpi_border_side, top=kpi_border_side, bottom=kpi_border_side)
+
+    # Row 4: Key Metrics
+    ws["A4"] = "Nombre de passagers :"
+    ws["A4"].font = Font(name="Calibri", bold=True, size=10, color="475569")
+    ws["B4"] = total_passengers
+    ws["B4"].font = Font(name="Calibri", bold=True, size=11, color="0F172A")
+
+    ws["D4"] = "Capacité du Bus :"
+    ws["D4"].font = Font(name="Calibri", bold=True, size=10, color="475569")
+    ws["E4"] = f"{capacity_val} places"
+    ws["E4"].font = Font(name="Calibri", bold=True, size=11, color="0F172A")
+
+    ws["G4"] = "Taux de Remplissage :"
+    ws["G4"].font = Font(name="Calibri", bold=True, size=10, color="475569")
+    ws["H4"] = f"{fill_rate}% {'(COMPLET)' if fill_rate >= 100 else ''}"
+    ws["H4"].font = Font(name="Calibri", bold=True, size=11, color="15803D" if fill_rate >= 100 else "B45309")
+
+    # Row 5: Financial & Export Date
+    ws["A5"] = "Recette Totale :"
+    ws["A5"].font = Font(name="Calibri", bold=True, size=10, color="475569")
+    ws["B5"] = total_revenue
+    ws["B5"].font = Font(name="Calibri", bold=True, size=11, color="1E40AF")
+    ws["B5"].number_format = '#,##0" FC"'
+
+    ws["D5"] = "Date d'export :"
+    ws["D5"].font = Font(name="Calibri", bold=True, size=10, color="475569")
+    ws["E5"] = datetime.now().strftime("%d/%m/%Y à %H:%M")
+    ws["E5"].font = Font(name="Calibri", italic=True, size=10, color="64748B")
+
+    ws["G5"] = "Statut Bus :"
+    ws["G5"].font = Font(name="Calibri", bold=True, size=10, color="475569")
+    ws["H5"] = "Prêt au départ"
+    ws["H5"].font = Font(name="Calibri", bold=True, size=11, color="15803D")
+
+    for r in (4, 5):
+        ws.row_dimensions[r].height = 20
+        for c in range(1, 10):
+            cell = ws.cell(row=r, column=c)
+            if not cell.fill.fill_type:
+                cell.fill = kpi_fill
+            cell.border = kpi_border
+            cell.alignment = Alignment(vertical="center")
+
+    ws.row_dimensions[6].height = 10  # Spacer
+
+    # ── 4. Table Headers ──────────────────────────────────────────────────────
+    headers = [
+        "#",
+        "N° Billet",
+        "Nom & Prénom du Passager",
+        "Téléphone",
+        "N° Siège",
+        "Prix Billet",
+        "Date / Heure Vente",
+        "Caissier",
+        "Statut",
+    ]
+    header_fill = PatternFill("solid", fgColor="1E3A8A")  # Dark Blue Header
+    thin_border_side = Side(style="thin", color="CBD5E1")
+    grid_border = Border(left=thin_border_side, right=thin_border_side, top=thin_border_side, bottom=thin_border_side)
+
+    header_row = 7
+    ws.row_dimensions[header_row].height = 26
+
+    for col_idx, text in enumerate(headers, start=1):
+        cell = ws.cell(row=header_row, column=col_idx, value=text)
+        cell.font = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = grid_border
+
+    # ── 5. Data Rows ──────────────────────────────────────────────────────────
+    fill_even = PatternFill("solid", fgColor="F8FAFC")
+    fill_odd = PatternFill("solid", fgColor="FFFFFF")
+
+    sorted_tickets = sorted(tickets, key=lambda t: t.seat_number)
+    for idx, t in enumerate(sorted_tickets, start=1):
+        row_idx = header_row + idx
+        fill = fill_even if idx % 2 == 0 else fill_odd
+        price_val = float(t.price)
+
+        date_vente_str = (
+            t.date_vente.strftime("%d/%m/%Y %H:%M")
+            if hasattr(t.date_vente, "strftime")
+            else str(t.date_vente or "")
+        )
+
+        row_values = [
+            idx,
+            t.numero,
+            t.passenger_name,
+            t.phone or "—",
+            f"Siège {t.seat_number:02d}" if isinstance(t.seat_number, int) else f"Siège {t.seat_number}",
+            price_val,
+            date_vente_str,
+            t.cashier.full_name if t.cashier else "—",
+            "Confirmé",
+        ]
+
+        for col_idx, val in enumerate(row_values, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=val)
+            cell.fill = fill
+            cell.border = grid_border
+            cell.font = Font(name="Calibri", size=10, color="0F172A")
+            cell.alignment = Alignment(vertical="center")
+
+            # Custom alignments per column
+            if col_idx in (1, 2, 4, 5, 7):
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            if col_idx == 5:  # Seat Number
+                cell.font = Font(name="Calibri", bold=True, size=10, color="1E40AF")
+            if col_idx == 6:  # Price
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+                cell.number_format = '#,##0" FC"'
+                cell.font = Font(name="Calibri", bold=True, size=10)
+            if col_idx == 9:  # Statut
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.font = Font(name="Calibri", bold=True, size=10, color="15803D")
+
+        ws.row_dimensions[row_idx].height = 20
+
+    # ── 6. Summary Footer Row ─────────────────────────────────────────────────
+    footer_row = header_row + len(sorted_tickets) + 1
+    ws.row_dimensions[footer_row].height = 26
+
+    footer_fill = PatternFill("solid", fgColor="0F172A")
+    footer_font = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
+
+    ws.merge_cells(start_row=footer_row, start_column=1, end_row=footer_row, end_column=5)
+    ws.cell(row=footer_row, column=1, value=f"TOTAL GÉNÉRAL : {total_passengers} PASSAGER(S)").font = footer_font
+    ws.cell(row=footer_row, column=1).alignment = Alignment(horizontal="right", vertical="center")
+
+    price_cell = ws.cell(row=footer_row, column=6, value=total_revenue)
+    price_cell.font = footer_font
+    price_cell.number_format = '#,##0" FC"'
+    price_cell.alignment = Alignment(horizontal="right", vertical="center")
+
+    ws.merge_cells(start_row=footer_row, start_column=7, end_row=footer_row, end_column=9)
+    ws.cell(row=footer_row, column=7, value="--- FIN DU MANIFESTE ---").font = Font(name="Calibri", italic=True, size=10, color="CBD5E1")
+    ws.cell(row=footer_row, column=7).alignment = Alignment(horizontal="center", vertical="center")
+
+    for col in range(1, 10):
+        cell = ws.cell(row=footer_row, column=col)
+        cell.fill = footer_fill
+        cell.border = grid_border
+
+    # ── 7. Signature Block ────────────────────────────────────────────────────
+    sig_row_start = footer_row + 3
+    ws.cell(row=sig_row_start, column=2, value="Signature du Chauffeur :").font = Font(name="Calibri", bold=True, size=10, color="334155")
+    ws.cell(row=sig_row_start + 1, column=2, value="___________________________________").font = Font(name="Calibri", color="94A3B8")
+
+    ws.cell(row=sig_row_start, column=7, value="Validation Chef d'Agence :").font = Font(name="Calibri", bold=True, size=10, color="334155")
+    ws.cell(row=sig_row_start + 1, column=7, value="___________________________________").font = Font(name="Calibri", color="94A3B8")
+
+    # ── 8. Column Widths ──────────────────────────────────────────────────────
+    col_widths = {
+        1: 6,   # #
+        2: 18,  # Ticket
+        3: 32,  # Passenger Name
+        4: 18,  # Phone
+        5: 14,  # Seat
+        6: 18,  # Price
+        7: 22,  # Date/Time
+        8: 24,  # Cashier
+        9: 14,  # Status
+    }
+    for col_idx, width in col_widths.items():
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    wb.save(path)
+    return path
+
+
+
 def export_tickets_pdf(tickets, path: Path, title: str = "Historique des ventes") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     c = canvas.Canvas(str(path), pagesize=A4)

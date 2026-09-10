@@ -23,6 +23,7 @@ from services.agency_context import agency_display_name
 from services.session_store import current_session
 from utils.formatters import format_long_date
 from utils.icons import fa_icon, ICONS
+from utils.sounds import play_notification, play_click
 # Views are imported lazily inside _get_page() to avoid loading all modules at startup
 
 
@@ -87,10 +88,8 @@ class MainWindow(QMainWindow):
         self.resize(1440, 900)
         self.setMinimumSize(1200, 720)
         self.setStyleSheet(f"QMainWindow {{ background: {T.BG_MAIN}; }}")
-        self._idle_ms = settings.SESSION_TIMEOUT_MINUTES * 60 * 1000
         self._page_cache: dict[int, QWidget] = {}
         self._build()
-        self._setup_idle_timer()
         self._clock_timer = QTimer(self)
         self._clock_timer.timeout.connect(self._tick_clock)
         self._clock_timer.start(1000)
@@ -136,11 +135,12 @@ class MainWindow(QMainWindow):
 
         self.btn_ventes = SidebarButton("VENTES", ICONS["ventes"])
         self.btn_bagages = SidebarButton("BAGAGES", ICONS["bagages"])
-        self.btn_ventes.clicked.connect(lambda: self._navigate(0))
-        self.btn_bagages.clicked.connect(lambda: self._navigate(1))
+        self.btn_ventes.clicked.connect(lambda: (play_click(), self._navigate(0)))
+        self.btn_bagages.clicked.connect(lambda: (play_click(), self._navigate(1)))
         sb.addWidget(self.btn_ventes)
         sb.addWidget(self.btn_bagages)
         sb.addStretch()
+
 
         self.btn_logout = SidebarButton("DÉCONNEXION", ICONS["logout"])
         self.btn_logout.clicked.connect(self._logout)
@@ -174,7 +174,7 @@ class MainWindow(QMainWindow):
         notif.setFixedSize(34, 34)
         notif.setCursor(Qt.CursorShape.PointingHandCursor)
         notif.setStyleSheet("QPushButton{background:transparent;border:none;}")
-        notif.clicked.connect(self._show_history)
+        notif.clicked.connect(lambda: (play_notification(), self._show_history()))
         header.addWidget(notif)
 
         user_box = QVBoxLayout()
@@ -270,36 +270,7 @@ class MainWindow(QMainWindow):
     def _tick_clock(self) -> None:
         self.date_lbl.setText(format_long_date(datetime.now()))
 
-    def _setup_idle_timer(self) -> None:
-        self._idle = QTimer(self)
-        self._idle.setSingleShot(True)
-        self._idle.timeout.connect(self._on_idle)
-        self._idle.start(self._idle_ms)
-
-    def _on_idle(self) -> None:
-        QMessageBox.warning(
-            self,
-            "Session expirée",
-            "Déconnexion automatique après inactivité.",
-        )
-        self._logout()
-
     def _logout(self) -> None:
         current_session.clear()
         self.logout_requested.emit()
         self.close()
-
-    def eventFilter(self, obj, event):
-        return super().eventFilter(obj, event)
-
-    def keyPressEvent(self, event):
-        self._idle.start(self._idle_ms)
-        super().keyPressEvent(event)
-
-    def mousePressEvent(self, event):
-        self._idle.start(self._idle_ms)
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        self._idle.start(self._idle_ms)
-        super().mouseMoveEvent(event)
