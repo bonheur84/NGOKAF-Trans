@@ -81,15 +81,17 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if exist build rmdir /s /q build
+
 echo.
 echo ============================================
-echo   BUILD TERMINE
+echo   BUILD TERMINE AVEC SUCCÈS
 echo ============================================
-echo   App :     dist\NGOKAF_TRANS\NGOKAF_TRANS.exe
-echo   Setup :   installer\Output\Setup_Ngokaf_Trans.exe
+echo   App Executable : dist\NGOKAF_TRANS\NGOKAF_TRANS.exe
+echo   Installateur   : installer\Output\Setup_Ngokaf_Trans.exe
 echo.
-echo   Distribuez Setup_Ngokaf_Trans.exe aux postes clients.
-echo   Python n'est PAS requis sur les postes clients.
-echo   MySQL doit etre disponible (localhost ou serveur configure).
+echo   [IMPORTANT] N'exécutez PAS les fichiers du dossier 'build'.
+echo   Lancez uniquement 'dist\NGOKAF_TRANS\NGOKAF_TRANS.exe'
+echo   ou installez avec 'Setup_Ngokaf_Trans.exe'.
 echo ============================================
 exit /b 0
