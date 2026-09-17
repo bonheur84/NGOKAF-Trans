@@ -87,16 +87,23 @@ def generate_luggage_label_pdf(item, path: Path | None = None) -> Path:
     centered_fit(item.numero, y - 12.5 * mm, size=16)
     y -= 21 * mm
 
-    # 3. Details use a vertical hierarchy to keep every value readable.
+    # 3. Details use one clearly aligned line per item: label left, value right.
     def field(label: str, value: str, *, value_size: float = 9) -> None:
         nonlocal y
+        label_width = pdfmetrics.stringWidth(label, "Helvetica-Bold", 7)
+        value = str(value or "—")
+        max_value_width = content_width - label_width - 5 * mm
+        fitted_size = value_size
+        while fitted_size > 6 and pdfmetrics.stringWidth(value, "Helvetica-Bold", fitted_size) > max_value_width:
+            fitted_size -= 0.5
         c.setFillColorRGB(0.38, 0.38, 0.38)
-        c.setFont("Helvetica-Bold", 6)
-        c.drawCentredString(w / 2, y, label)
-        y -= 3.5 * mm
+        c.setFont("Helvetica-Bold", 7)
+        c.drawString(margin, y, label)
         c.setFillColorRGB(0.05, 0.05, 0.05)
-        centered_fit(value, y, size=value_size)
-        y -= 6 * mm
+        c.setFont("Helvetica-Bold", fitted_size)
+        c.drawRightString(w - margin, y, value)
+        y -= 5.5 * mm
+        separator(y + 1.5 * mm)
 
     route = getattr(item, "route_label", "") or ""
     if item.route:
@@ -104,8 +111,6 @@ def generate_luggage_label_pdf(item, path: Path | None = None) -> Path:
         a = item.route.ville_arrivee.upper()
         route = f"{d} ➔ {a}"
     field("PASSAGER", item.sender_name.upper(), value_size=10)
-    separator(y + 2 * mm)
-    y -= 2.5 * mm
     field("TRAJET", route, value_size=9)
     bus_code = getattr(item, "bus_code", "") or (item.bus.code if item.bus else "")
     field("BUS", bus_code or "—", value_size=9)
@@ -124,7 +129,6 @@ def generate_luggage_label_pdf(item, path: Path | None = None) -> Path:
     else:
         y -= 2 * mm
 
-    separator(y)
     y -= 4 * mm
 
     # 5. BARCODE
