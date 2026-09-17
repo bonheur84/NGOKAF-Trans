@@ -159,14 +159,23 @@ def register_luggage(
 def find_ticket_for_luggage(
     session: Session, ticket_number: str, agency_id: int | None = None
 ) -> Ticket | None:
-    """Return a valid agency ticket, with its route and bus, for baggage check-in."""
+    """Find a sold ticket for baggage check-in, including inactive trip records.
+
+    A bus can be deactivated once its departure is closed.  That operational
+    status must never hide the tickets already sold for the trip, because their
+    passengers may still check in luggage.  The ticket number is also accepted
+    as a fallback when the printed baggage code is unavailable.
+    """
     aid = agency_id if agency_id is not None else current_agency_id()
     code = ticket_number.strip()
     if not code:
         return None
     q = session.query(Ticket).options(
         joinedload(Ticket.route), joinedload(Ticket.bus), joinedload(Ticket.cashier)
-    ).filter(Ticket.luggage_code == code.upper(), Ticket.statut == "vendu")
+    ).filter(
+        (Ticket.luggage_code == code.upper()) | (Ticket.numero == code.upper()),
+        Ticket.statut == "vendu",
+    )
     if aid is not None:
         q = q.filter(Ticket.agency_id == aid)
     return q.order_by(Ticket.created_at.desc()).first()

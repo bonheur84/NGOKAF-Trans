@@ -190,9 +190,9 @@ class BagagesView(QWidget):
         ticket_row.setSpacing(8)
         ticket_row.addWidget(self.ticket_code, 1)
         ticket_row.addWidget(find_ticket_btn)
-        form.addLayout(labeled("Code bagage inscrit sur le billet", self._wrap_layout(ticket_row)))
+        form.addLayout(labeled("Code bagage ou numéro de billet", self._wrap_layout(ticket_row)))
 
-        self.ticket_details = QLabel("Saisissez le code NG imprimé sur le billet pour charger le passager, le trajet et le bus.")
+        self.ticket_details = QLabel("Saisissez le code NG ou le numéro du billet pour charger le passager, le trajet et le bus.")
         self.ticket_details.setWordWrap(True)
         self.ticket_details.setStyleSheet(
             f"background:{T.BG_SELECTION};border-radius:10px;padding:10px;color:{T.TEXT_SECONDARY};font-size:12px;"
@@ -389,6 +389,11 @@ class BagagesView(QWidget):
                 f"Voyage : {ticket.travel_date.strftime('%d/%m/%Y')}"
             )
             self.selected_route_id = ticket.route_id
+            # An inactive bus also deactivates its routes to prevent new ticket
+            # sales. Keep the sold ticket's route visible here, however: baggage
+            # check-in remains valid for passengers already assigned to that trip.
+            if ticket.route and not any(route.id == ticket.route.id for route in self.routes):
+                self.routes.append(ticket.route)
             self._rebuild_trips()
             self._reload_table(session)
         finally:
@@ -453,10 +458,15 @@ class BagagesView(QWidget):
             if w:
                 w.deleteLater()
         for r in self.routes:
+            is_inactive_trip = r.statut != "actif" or (
+                r.bus and r.bus.statut != "actif"
+            )
             label = (
                 f"{r.short_label}  ·  Bus #{r.bus.code if r.bus else '?'}  ·  "
                 f"{r.heure_depart.strftime('%H:%M')}"
             )
+            if is_inactive_trip:
+                label += "  ·  Départ clôturé — bagage autorisé"
             btn = QPushButton(label)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             active = self.selected_route_id == r.id
@@ -639,7 +649,7 @@ class BagagesView(QWidget):
             self.montant.setValue(0)
             self.ticket_code.clear()
             self.selected_ticket = None
-            self.ticket_details.setText("Saisissez le code NG imprimé sur le billet pour charger le passager, le trajet et le bus.")
+            self.ticket_details.setText("Saisissez le code NG ou le numéro du billet pour charger le passager, le trajet et le bus.")
             self.refresh()
         except Exception as e:
             session.rollback()
