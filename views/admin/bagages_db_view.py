@@ -10,7 +10,7 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
-    QHeaderView, QDateEdit, QMessageBox, QFileDialog,
+    QHeaderView, QDateEdit, QMessageBox, QFileDialog, QApplication,
 )
 from sqlalchemy.orm import joinedload
 
@@ -20,6 +20,7 @@ from resources import theme as T
 from services.agency_context import current_agency_id
 from utils.formatters import format_fc
 from views.admin.widgets import style_table, secondary_btn
+from views.widgets.loading import LoadingOverlay, TableSkeleton
 
 
 def _q_to_date(qd):
@@ -63,6 +64,8 @@ class BagagesDBView(QWidget):
         super().__init__(parent)
         self._data = []
         self._build_ui()
+        self._loading_overlay = LoadingOverlay(self, "Chargement de la base bagages…")
+        self._table_skeleton = TableSkeleton(self.table, rows=8)
 
     def _field_style(self):
         return (
@@ -167,36 +170,43 @@ class BagagesDBView(QWidget):
         root.addWidget(self.table, 1)
 
     def refresh(self):
-        session = get_session()
+        self._loading_overlay.show_loading("Chargement de la base bagages…")
+        self._table_skeleton.show()
+        QApplication.processEvents()
         try:
-            aid = current_agency_id()
-            q = (
-                session.query(Luggage)
-                .options(joinedload(Luggage.route), joinedload(Luggage.bus))
-                .order_by(Luggage.created_at.desc())
-            )
-            if aid is not None:
-                q = q.filter(Luggage.agency_id == aid)
-            items = q.limit(5000).all()
-            self._data = []
-            for item in items:
-                self._data.append({
-                    "id": item.id,
-                    "numero": item.numero,
-                    "sender_name": item.sender_name,
-                    "sender_phone": item.sender_phone or "",
-                    "recipient_name": item.recipient_name,
-                    "recipient_phone": item.recipient_phone or "",
-                    "poids": float(item.poids),
-                    "total": item.total,
-                    "statut": item.statut,
-                    "route_label": item.route.short_label if item.route else "",
-                    "bus_code": item.bus.code if item.bus else "-",
-                    "created_at": item.created_at,
-                })
+            session = get_session()
+            try:
+                aid = current_agency_id()
+                q = (
+                    session.query(Luggage)
+                    .options(joinedload(Luggage.route), joinedload(Luggage.bus))
+                    .order_by(Luggage.created_at.desc())
+                )
+                if aid is not None:
+                    q = q.filter(Luggage.agency_id == aid)
+                items = q.limit(5000).all()
+                self._data = []
+                for item in items:
+                    self._data.append({
+                        "id": item.id,
+                        "numero": item.numero,
+                        "sender_name": item.sender_name,
+                        "sender_phone": item.sender_phone or "",
+                        "recipient_name": item.recipient_name,
+                        "recipient_phone": item.recipient_phone or "",
+                        "poids": float(item.poids),
+                        "total": item.total,
+                        "statut": item.statut,
+                        "route_label": item.route.short_label if item.route else "",
+                        "bus_code": item.bus.code if item.bus else "-",
+                        "created_at": item.created_at,
+                    })
+            finally:
+                session.close()
+            self._apply_filters()
         finally:
-            session.close()
-        self._apply_filters()
+            self._table_skeleton.hide()
+            self._loading_overlay.hide_loading()
 
     def _apply_filters(self):
         code = self.search_code.text().strip().lower()

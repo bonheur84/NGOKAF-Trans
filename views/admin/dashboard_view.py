@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QFileDialog,
     QMessageBox,
+    QApplication,
 )
 
 from database.session import get_session
@@ -33,6 +34,7 @@ from views.admin.charts import (
 )
 from views.admin.widgets import kpi_card, set_kpi
 from views.widgets.card import Card
+from views.widgets.loading import LoadingOverlay
 
 
 class CashierRow(QWidget):
@@ -81,14 +83,15 @@ class DashboardView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._build()
+        self._loading_overlay = LoadingOverlay(self, "Préparation du tableau de bord…")
 
         # Setup Auto-Refresh QTimer
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.refresh)
         self.toggle_auto_refresh()
 
-        # Initial load
-        self.refresh()
+        # Let the view paint first so the loading state is visible on startup.
+        QTimer.singleShot(0, lambda: self.refresh(show_loading=True))
 
     def _build(self) -> None:
         outer = QVBoxLayout(self)
@@ -244,7 +247,10 @@ class DashboardView(QWidget):
         else:
             self.refresh_timer.stop()
 
-    def refresh(self) -> None:
+    def refresh(self, show_loading: bool = False) -> None:
+        if show_loading:
+            self._loading_overlay.show_loading("Préparation du tableau de bord…")
+            QApplication.processEvents()
         days = self.period.currentData() or 30
         session = get_session()
         try:
@@ -314,6 +320,8 @@ class DashboardView(QWidget):
 
         finally:
             session.close()
+            if show_loading:
+                self._loading_overlay.hide_loading()
 
     def refresh_live(self) -> None:
         """Refresh only small KPI queries; charts stay on the normal interval."""

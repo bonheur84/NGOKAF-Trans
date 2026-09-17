@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QWidget,
     QHBoxLayout,
     QVBoxLayout,
@@ -50,6 +51,7 @@ from utils.formatters import format_fc
 from utils.icons import fa_icon, apply_button_icon, ICONS
 from utils.sounds import play_error, play_warning, play_print
 from views.widgets.card import Card
+from views.widgets.loading import LoadingOverlay, TableSkeleton
 
 
 class BagagesView(QWidget):
@@ -61,6 +63,8 @@ class BagagesView(QWidget):
         self.selected_ticket = None
         self._last_checked_date = date.today()
         self._build()
+        self._loading_overlay = LoadingOverlay(self, "Chargement des bagages…")
+        self._table_skeleton = TableSkeleton(self.table)
         self.refresh()
 
         # Timer checking for date change (midnight reset) every 30s
@@ -415,6 +419,9 @@ class BagagesView(QWidget):
         return card, v, s
 
     def refresh(self) -> None:
+        self._loading_overlay.show_loading("Chargement des bagages…")
+        self._table_skeleton.show()
+        QApplication.processEvents()
         session = get_session()
         try:
             reset_daily_luggage_links(session)
@@ -431,6 +438,8 @@ class BagagesView(QWidget):
             self._reload_table(session)
         finally:
             session.close()
+            self._table_skeleton.hide()
+            self._loading_overlay.hide_loading()
 
     def refresh_live(self) -> None:
         """Keep daily counters current without resetting the baggage form."""
@@ -487,11 +496,16 @@ class BagagesView(QWidget):
     def _select_route(self, route_id: int) -> None:
         self.selected_route_id = route_id
         self._rebuild_trips()
+        self._loading_overlay.show_loading("Chargement du manifeste…")
+        self._table_skeleton.show()
+        QApplication.processEvents()
         session = get_session()
         try:
             self._reload_table(session)
         finally:
             session.close()
+            self._table_skeleton.hide()
+            self._loading_overlay.hide_loading()
 
     def _reload_table(self, session) -> None:
         route = next((r for r in self.routes if r.id == self.selected_route_id), None)
