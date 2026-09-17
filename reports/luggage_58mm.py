@@ -46,111 +46,100 @@ def generate_luggage_label_pdf(item, path: Path | None = None) -> Path:
         c.line(4 * mm, y_pos, w - 4 * mm, y_pos)
         c.setDash([])
 
-    copies = ["ÉTIQUETTE BAGAGE (COPIE COLIS)", "REÇU BAGAGE (COPIE CLIENT)"]
-    for copy_title in copies:
-        y = LABEL_HEIGHT - 4 * mm
+    # One adhesive label per luggage item.  No customer receipt is printed.
+    y = LABEL_HEIGHT - 4 * mm
 
-        # 1. HEADER (Logo & Brand)
-        logo = settings.logo_path
-        if logo.exists():
-            try:
-                c.drawImage(str(logo), 4 * mm, y - 10 * mm, 12 * mm, 10 * mm, mask="auto")
-            except Exception:
-                pass
-
-        c.setFillColorRGB(0.05, 0.05, 0.05)
-        c.setFont("Helvetica-Bold", 10)
-        c.drawRightString(w - 4 * mm, y - 4 * mm, "NGOKAF LUGGAGE")
-        c.setFont("Helvetica", 6)
-        c.drawRightString(w - 4 * mm, y - 8 * mm, "Fret & Messagerie")
-        y -= 12 * mm
-
-        draw_dashed_line(y)
-        y -= 4 * mm
-
-        # 2. LUGGAGE ID
-        c.setFont("Helvetica-Bold", 7.5)
-        c.drawCentredString(w / 2, y, copy_title)
-        y -= 7 * mm
-        c.setFont("Helvetica-Bold", 16)
-        c.drawCentredString(w / 2, y, item.numero)
-        y -= 5 * mm
-        draw_dashed_line(y)
-        y -= 4 * mm
-
-        # 3. DETAILS
-        def row(label: str, value: str, val_size=8, bold=True):
-            nonlocal y
-            c.setFont("Helvetica", 6.5)
-            c.setFillColorRGB(0.3, 0.3, 0.3)
-            c.drawString(4 * mm, y, label)
-            c.setFont("Helvetica-Bold" if bold else "Helvetica", val_size)
-            c.setFillColorRGB(0.05, 0.05, 0.05)
-            c.drawRightString(w - 4 * mm, y, value)
-            y -= 5 * mm
-
-        route = getattr(item, "route_label", "") or ""
-        if item.route:
-            d = item.route.ville_depart.upper()
-            a = item.route.ville_arrivee.upper()
-            route = f"{d} ➔ {a}"
-        row("TRAJET", route, val_size=9)
-        row("BILLET", getattr(item, "ticket_numero", "") or "—", val_size=9)
-        bus_code = getattr(item, "bus_code", "") or (item.bus.code if item.bus else "")
-        row("BUS", bus_code or "—", val_size=8)
-
-        # Destinataire is usually more critical for luggage pickup
-        row("DESTINATAIRE", item.recipient_name.upper()[:16], val_size=8)
-        row("TÉL", (item.recipient_phone or "")[:18], val_size=8)
-
-        # Expéditeur
-        row("EXPÉDITEUR", item.sender_name.upper()[:16], val_size=7, bold=False)
-
-        # Poids & Colis
-        row("POIDS", f"{float(item.poids):.1f} KG", val_size=9)
-
-        # Prix
-        row("TOTAL", f"{float(item.total):.0f} FC", val_size=10)
-
-        # 4. FRAGILE ALERT
-        if item.fragile:
-            y -= 1 * mm
-            c.setFillColorRGB(0, 0, 0)
-            c.rect(4 * mm, y - 7 * mm, w - 8 * mm, 7 * mm, fill=1, stroke=0)
-            c.setFillColorRGB(1, 1, 1)
-            c.setFont("Helvetica-Bold", 10)
-            c.drawCentredString(w / 2, y - 5 * mm, "⚠ FRAGILE ⚠")
-            y -= 9 * mm
-        else:
-            y -= 2 * mm
-
-        draw_dashed_line(y)
-        y -= 4 * mm
-
-        # 5. BARCODE
+    # 1. HEADER (Logo & Brand)
+    logo = settings.logo_path
+    if logo.exists():
         try:
-            bc = _barcode_image(item.barcode)
-            c.drawImage(bc, 4 * mm, y - 12 * mm, w - 8 * mm, 12 * mm, mask="auto")
-            y -= 14 * mm
+            c.drawImage(str(logo), 4 * mm, y - 10 * mm, 12 * mm, 10 * mm, mask="auto")
         except Exception:
-            y -= 2 * mm
+            pass
 
+    c.setFillColorRGB(0.05, 0.05, 0.05)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawRightString(w - 4 * mm, y - 4 * mm, "NGOKAF LUGGAGE")
+    c.setFont("Helvetica", 6)
+    c.drawRightString(w - 4 * mm, y - 8 * mm, "ÉTIQUETTE À COLLER")
+    y -= 12 * mm
+
+    draw_dashed_line(y)
+    y -= 4 * mm
+
+    # 2. LUGGAGE ID
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(w / 2, y, item.numero)
+    y -= 5 * mm
+    draw_dashed_line(y)
+    y -= 4 * mm
+
+    # 3. DETAILS
+    def row(label: str, value: str, val_size=8, bold=True):
+        nonlocal y
+        c.setFont("Helvetica", 6.5)
+        c.setFillColorRGB(0.3, 0.3, 0.3)
+        c.drawString(4 * mm, y, label)
+        c.setFont("Helvetica-Bold" if bold else "Helvetica", val_size)
         c.setFillColorRGB(0.05, 0.05, 0.05)
-        c.setFont("Helvetica", 7)
-        c.drawCentredString(w / 2, y, item.barcode)
+        c.drawRightString(w - 4 * mm, y, value)
         y -= 5 * mm
 
-        # 6. FOOTER
-        c.setFillColorRGB(0.4, 0.4, 0.4)
-        c.setFont("Helvetica", 5.5)
-        terminal = settings.TERMINAL_NAME[:15]
-        date_str = item.created_at.strftime('%d/%m/%y %H:%M')
-        c.drawCentredString(w / 2, y, f"DATE: {date_str} | TERMINAL: {terminal}")
+    route = getattr(item, "route_label", "") or ""
+    if item.route:
+        d = item.route.ville_depart.upper()
+        a = item.route.ville_arrivee.upper()
+        route = f"{d} ➔ {a}"
+    row("TRAJET", route, val_size=9)
+    row("BILLET", getattr(item, "ticket_numero", "") or "—", val_size=9)
+    bus_code = getattr(item, "bus_code", "") or (item.bus.code if item.bus else "")
+    row("BUS", bus_code or "—", val_size=8)
 
-        y -= 3 * mm
-        draw_dashed_line(y)
+    row("PASSAGER", item.sender_name.upper()[:16], val_size=8)
 
-        c.showPage()
+    # Poids & Colis
+    row("POIDS", f"{float(item.poids):.1f} KG", val_size=9)
+
+    # Prix
+    row("TOTAL", f"{float(item.total):.0f} FC", val_size=10)
+
+    # 4. FRAGILE ALERT
+    if item.fragile:
+        y -= 1 * mm
+        c.setFillColorRGB(0, 0, 0)
+        c.rect(4 * mm, y - 7 * mm, w - 8 * mm, 7 * mm, fill=1, stroke=0)
+        c.setFillColorRGB(1, 1, 1)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawCentredString(w / 2, y - 5 * mm, "⚠ FRAGILE ⚠")
+        y -= 9 * mm
+    else:
+        y -= 2 * mm
+
+    draw_dashed_line(y)
+    y -= 4 * mm
+
+    # 5. BARCODE
+    try:
+        bc = _barcode_image(item.barcode)
+        c.drawImage(bc, 4 * mm, y - 12 * mm, w - 8 * mm, 12 * mm, mask="auto")
+        y -= 14 * mm
+    except Exception:
+        y -= 2 * mm
+
+    c.setFillColorRGB(0.05, 0.05, 0.05)
+    c.setFont("Helvetica", 7)
+    c.drawCentredString(w / 2, y, item.barcode)
+    y -= 5 * mm
+
+    # 6. FOOTER
+    c.setFillColorRGB(0.4, 0.4, 0.4)
+    c.setFont("Helvetica", 5.5)
+    terminal = settings.TERMINAL_NAME[:15]
+    date_str = item.created_at.strftime('%d/%m/%y %H:%M')
+    c.drawCentredString(w / 2, y, f"DATE: {date_str} | TERMINAL: {terminal}")
+
+    y -= 3 * mm
+    draw_dashed_line(y)
 
     c.save()
     return out
