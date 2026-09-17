@@ -237,7 +237,6 @@ class LoginView(QWidget):
             if not account:
                 self.error.setText("Identifiants incorrects.")
                 return
-            current_session.user = account
             if self.remember.isChecked():
                 auth_service.save_remember_username(user)
             else:
