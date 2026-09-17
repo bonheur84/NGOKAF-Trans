@@ -23,14 +23,26 @@ def print_ticket(ticket, user_id: int | None = None, preview_only: bool = False)
     return path
 
 
-def print_luggage(item, user_id: int | None = None, preview_only: bool = False) -> Path:
+def print_luggage(
+    item,
+    user_id: int | None = None,
+    preview_only: bool = False,
+    printer_name: str | None = None,
+) -> Path:
     if preview_only:
         path = generate_luggage_label_pdf(item)
     else:
-        path = print_luggage_label(item)
+        path = print_luggage_label(item, printer_name=printer_name)
     session = get_session()
     try:
-        log_audit(session, "print", "luggage", item.id, user_id, {"path": str(path)})
+        log_audit(
+            session,
+            "print",
+            "luggage",
+            item.id,
+            user_id,
+            {"path": str(path), "printer": printer_name or "default"},
+        )
         session.commit()
     finally:
         session.close()

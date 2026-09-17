@@ -11,6 +11,7 @@ from database.session import Base, get_session
 import models  # noqa: F401
 from services.settings_service import ensure_default_settings
 from services.auth_service import ensure_default_admin
+from services.sale_service import ensure_ticket_luggage_codes
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ def init_database() -> None:
     try:
         run_agency_migration(engine, session)
         ensure_default_admin(session)
+        ensure_ticket_luggage_codes(session)
         ensure_default_settings(session)
         session.commit()
     except Exception:

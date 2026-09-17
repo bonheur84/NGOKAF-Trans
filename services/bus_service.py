@@ -110,9 +110,43 @@ def set_bus_statut(session: Session, bus: Bus, statut: str, user_id: int | None 
     return bus
 
 
-def reactivate_bus(session: Session, bus: Bus, user_id: int | None = None) -> Bus:
-    """Reactivate bus and its associated routes when it returns from a trip."""
-    return set_bus_statut(session, bus, "actif", user_id)
+def reactivate_bus(
+    session: Session,
+    bus: Bus,
+    user_id: int | None = None,
+    *,
+    route_id: int | None = None,
+    travel_date: date | None = None,
+) -> Bus:
+    """Reactivate a returned bus and release seats from its completed trip.
+
+    Tickets are retained for reporting, but their status changes from ``vendu``
+    to ``termine`` so they no longer occupy seats for the next departure.
+    """
+    bus = set_bus_statut(session, bus, "actif", user_id)
+    if route_id is not None and travel_date is not None:
+        from models.ticket import Ticket
+
+        completed = (
+            session.query(Ticket)
+            .filter(
+                Ticket.bus_id == bus.id,
+                Ticket.route_id == route_id,
+                Ticket.travel_date == travel_date,
+                Ticket.statut == "vendu",
+            )
+            .update({Ticket.statut: "termine"}, synchronize_session=False)
+        )
+        if completed:
+            log_audit(
+                session,
+                "complete_trip",
+                "route",
+                route_id,
+                user_id,
+                {"travel_date": travel_date.isoformat(), "tickets": completed},
+            )
+    return bus
 
 
 def delete_bus(session: Session, bus: Bus, user_id: int | None = None) -> None:
@@ -135,13 +169,14 @@ def delete_bus(session: Session, bus: Bus, user_id: int | None = None) -> None:
             "Veuillez d'abord supprimer ou réaffecter les trajets."
         )
 
-    # Block deletion if luggage items are linked (bus_id is NOT NULL on luggage)
-    luggage_count = session.query(Luggage).filter(Luggage.bus_id == bid).count()
-    if luggage_count > 0:
-        raise ValueError(
-            f"Impossible de supprimer ce bus : {luggage_count} bagage(s) y sont associé(s). "
-            "Veuillez d'abord supprimer ou réaffecter les bagages."
-        )
+    # Preserve luggage in history while detaching it from the bus being deleted.
+    luggage_items = session.query(Luggage).filter(Luggage.bus_id == bid).all()
+    for item in luggage_items:
+        if not item.bus_code:
+            item.bus_code = bus.code
+        if item.route and not item.route_label:
+            item.route_label = item.route.short_label
+        item.bus_id = None
 
     # Nullify ticket bus_id via raw SQL to bypass NOT NULL constraint mismatch
     session.execute(text("UPDATE tickets SET bus_id = NULL WHERE bus_id = :bid"), {"bid": bid})
@@ -285,13 +320,14 @@ def delete_route(session: Session, route: Route, user_id: int | None = None) -> 
     rid = route.id
     label = f"{route.ville_depart} → {route.ville_arrivee}"
 
-    # Block deletion if luggage items are linked (route_id is NOT NULL on luggage)
-    luggage_count = session.query(Luggage).filter(Luggage.route_id == rid).count()
-    if luggage_count > 0:
-        raise ValueError(
-            f"Impossible de supprimer ce trajet : {luggage_count} bagage(s) y sont associé(s). "
-            "Veuillez d'abord supprimer ou réaffecter les bagages."
-        )
+    # Preserve luggage in history while detaching it from the route being deleted.
+    luggage_items = session.query(Luggage).filter(Luggage.route_id == rid).all()
+    for item in luggage_items:
+        if not item.route_label:
+            item.route_label = route.short_label
+        if item.bus and not item.bus_code:
+            item.bus_code = item.bus.code
+        item.route_id = None
 
     # Nullify ticket route_id via raw SQL to bypass NOT NULL constraint mismatch
     # (the DB column may be NOT NULL while the ORM model declares nullable=True)

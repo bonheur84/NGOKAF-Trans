@@ -111,6 +111,10 @@ def generate_ticket_pdf(ticket, path: Path | None = None) -> Path:
     c.drawCentredString(w / 2, y, ticket.numero)
     y -= 6 * mm
 
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(w / 2, y, f"CODE : {getattr(ticket, 'luggage_code', None) or '—'}")
+    y -= 5 * mm
+
     draw_dashed_line(y)
     y -= 5 * mm
 
@@ -170,27 +174,29 @@ def generate_ticket_pdf(ticket, path: Path | None = None) -> Path:
     pass_phone = getattr(ticket, "phone", "")
     row2("PASSAGER", ticket.passenger_name.upper()[:20], "TÉLÉPHONE", pass_phone)
 
-    # 6. PRICE & EMISSION
+    # 6. PRICE & CASHIER
     draw_dashed_line(y)
     y -= 5 * mm
     
     c.setFont("Helvetica", 7)
     c.setFillColorRGB(0.4, 0.4, 0.4)
     c.drawString(4 * mm, y, "NET À PAYER")
-    c.drawRightString(w - 4 * mm, y, "STATUT")
     y -= 4 * mm
     c.setFont("Helvetica-Bold", 14)
     c.setFillColorRGB(0.05, 0.05, 0.05)
     c.drawString(4 * mm, y, format_fc(ticket.price))
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(w - 4 * mm, y + 1 * mm, ticket.statut.upper())
     y -= 6 * mm
 
-    printed_at = ticket.created_at or datetime.now()
-    emission_str = f"{printed_at.day:02d}/{printed_at.month:02d}/{printed_at.year} à {printed_at.strftime('%H:%M')}"
     cashier_name = ticket.cashier.username if ticket.cashier else "Système"
-    
-    row2("ÉMIS LE", emission_str, "CAISSIER", cashier_name, val_font="Helvetica", val_size=7)
+
+    c.setFont("Helvetica", 6)
+    c.setFillColorRGB(0.4, 0.4, 0.4)
+    c.drawString(4 * mm, y, "CAISSIER")
+    y -= 3.5 * mm
+    c.setFont("Helvetica", 7)
+    c.setFillColorRGB(0.1, 0.1, 0.1)
+    c.drawString(4 * mm, y, cashier_name)
+    y -= 5 * mm
 
     # 7. QR CODE
     y -= 2 * mm
@@ -222,7 +228,7 @@ def generate_ticket_pdf(ticket, path: Path | None = None) -> Path:
     return out
 
 
-def print_pdf_direct(pdf_path: Path) -> bool:
+def print_pdf_direct(pdf_path: Path, printer_name: str | None = None) -> bool:
     """Print PDF directly to default physical printer without dialogs or external viewer popups.
     Returns True if sent to a physical printer, False if no physical printer is available.
     """
@@ -232,7 +238,17 @@ def print_pdf_direct(pdf_path: Path) -> bool:
         from PySide6.QtGui import QPainter
         from PySide6.QtCore import QSize, QRectF
 
-        default_info = QPrinterInfo.defaultPrinter()
+        if printer_name:
+            selected = next(
+                (info for info in QPrinterInfo.availablePrinters() if info.printerName() == printer_name),
+                None,
+            )
+            if selected is None:
+                logger.warning("Configured printer is unavailable: %s", printer_name)
+                return False
+            default_info = selected
+        else:
+            default_info = QPrinterInfo.defaultPrinter()
         if default_info.isNull():
             return False
 

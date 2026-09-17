@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QScrollArea,
     QMenu,
+    QComboBox,
 )
 
 from database.session import get_session
@@ -33,11 +34,13 @@ from services.luggage_service import (
     list_luggage_for_bus,
     list_recent_luggage,
     register_luggage,
+    find_ticket_for_luggage,
     update_luggage_status,
     reset_daily_luggage_links,
 )
 from services.session_store import current_session
 from services.print_service import print_luggage
+from services.settings_service import get_setting, set_setting
 from services.export_service import (
     export_luggage_csv,
     export_luggage_excel,
@@ -55,6 +58,7 @@ class BagagesView(QWidget):
         self.routes = []
         self.selected_route_id: int | None = None
         self._items = []
+        self.selected_ticket = None
         self._last_checked_date = date.today()
         self._build()
         self.refresh()
@@ -169,7 +173,33 @@ class BagagesView(QWidget):
             box.addWidget(widget)
             return box
 
-        # Colis voyageur sur place : nom, téléphone, description, montant
+        # Ticket lookup links each luggage record to the passenger's journey.
+        self.ticket_code = QLineEdit()
+        self.ticket_code.setPlaceholderText("Ex. NG-260917-12345")
+        self.ticket_code.setStyleSheet(field_ss)
+        self.ticket_code.setMinimumHeight(T.FIELD_HEIGHT)
+        self.ticket_code.returnPressed.connect(self._find_ticket)
+        find_ticket_btn = QPushButton("Rechercher le billet")
+        find_ticket_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        find_ticket_btn.clicked.connect(self._find_ticket)
+        find_ticket_btn.setStyleSheet(
+            f"QPushButton{{background:{T.PRIMARY_ALT};color:white;border:none;"
+            f"border-radius:{T.RADIUS_BUTTON}px;padding:8px 12px;font-weight:600;}}"
+        )
+        ticket_row = QHBoxLayout()
+        ticket_row.setSpacing(8)
+        ticket_row.addWidget(self.ticket_code, 1)
+        ticket_row.addWidget(find_ticket_btn)
+        form.addLayout(labeled("Code bagage inscrit sur le billet", self._wrap_layout(ticket_row)))
+
+        self.ticket_details = QLabel("Saisissez le code NG imprimé sur le billet pour charger le passager, le trajet et le bus.")
+        self.ticket_details.setWordWrap(True)
+        self.ticket_details.setStyleSheet(
+            f"background:{T.BG_SELECTION};border-radius:10px;padding:10px;color:{T.TEXT_SECONDARY};font-size:12px;"
+        )
+        form.addWidget(self.ticket_details)
+
+        # Client details, filled from the selected ticket.
         self.sender = QLineEdit()
         self.sender.setPlaceholderText("Ex: Jean Dupont")
         self.sender_phone = QLineEdit()
@@ -189,6 +219,13 @@ class BagagesView(QWidget):
         form.addLayout(labeled("Nom du voyageur", self.sender))
         form.addLayout(labeled("Téléphone", self.sender_phone))
         form.addLayout(labeled("Description du colis", self.description))
+
+        self.label_printer = QComboBox()
+        self.label_printer.setStyleSheet(field_ss)
+        self.label_printer.setMinimumHeight(T.FIELD_HEIGHT)
+        self._load_label_printers()
+        self.label_printer.currentIndexChanged.connect(self._save_label_printer)
+        form.addLayout(labeled("Imprimante des étiquettes", self.label_printer))
 
         r3 = QHBoxLayout()
         r3.setSpacing(12)
@@ -291,6 +328,72 @@ class BagagesView(QWidget):
         root.addLayout(body, 1)
         self._update_montant_display()
 
+    @staticmethod
+    def _wrap_layout(layout: QHBoxLayout) -> QWidget:
+        widget = QWidget()
+        widget.setLayout(layout)
+        return widget
+
+    def _load_label_printers(self) -> None:
+        """Load installed printers and retain a separate label-printer setting."""
+        selected = ""
+        session = get_session()
+        try:
+            selected = get_setting(session, "luggage_label_printer", "")
+        finally:
+            session.close()
+        self.label_printer.blockSignals(True)
+        self.label_printer.clear()
+        self.label_printer.addItem("Imprimante Windows par défaut", "")
+        try:
+            from PySide6.QtPrintSupport import QPrinterInfo
+            for info in QPrinterInfo.availablePrinters():
+                self.label_printer.addItem(info.printerName(), info.printerName())
+        except Exception:
+            pass
+        index = self.label_printer.findData(selected)
+        self.label_printer.setCurrentIndex(index if index >= 0 else 0)
+        self.label_printer.blockSignals(False)
+
+    def _save_label_printer(self) -> None:
+        session = get_session()
+        try:
+            set_setting(session, "luggage_label_printer", self.label_printer.currentData() or "")
+            session.commit()
+        finally:
+            session.close()
+
+    def _find_ticket(self) -> None:
+        code = self.ticket_code.text().strip()
+        if not code:
+            QMessageBox.warning(self, "Bagages", "Saisissez le code du billet.")
+            return
+        session = get_session()
+        try:
+            ticket = find_ticket_for_luggage(session, code)
+            if not ticket:
+                self.selected_ticket = None
+                self.ticket_details.setText("Aucun billet valide trouvé pour ce code dans cette agence.")
+                QMessageBox.warning(self, "Bagages", "Code bagage introuvable ou billet annulé.")
+                return
+            self.selected_ticket = ticket
+            self.sender.setText(ticket.passenger_name)
+            self.sender_phone.setText(ticket.phone)
+            self.ticket_code.setText(ticket.numero)
+            route_label = ticket.route.short_label if ticket.route else "—"
+            bus_code = ticket.bus.code if ticket.bus else "—"
+            self.ticket_details.setText(
+                f"<b>Code bagage : {ticket.luggage_code}</b><br>Billet : {ticket.numero}<br>"
+                f"Client : {ticket.passenger_name} · {ticket.phone}<br>"
+                f"Trajet : {route_label}<br>Bus : {bus_code} · Siège {ticket.seat_number}<br>"
+                f"Voyage : {ticket.travel_date.strftime('%d/%m/%Y')}"
+            )
+            self.selected_route_id = ticket.route_id
+            self._rebuild_trips()
+            self._reload_table(session)
+        finally:
+            session.close()
+
     def _stat_card(self, label: str, value: str, sub: str) -> tuple:
         card = Card()
         l = QLabel(label)
@@ -321,6 +424,19 @@ class BagagesView(QWidget):
             self._rebuild_trips()
             self._update_montant_display()
             self._reload_table(session)
+        finally:
+            session.close()
+
+    def refresh_live(self) -> None:
+        """Keep daily counters current without resetting the baggage form."""
+        session = get_session()
+        try:
+            stats = today_luggage_stats(session)
+            self.stat_count_val.setText(str(stats["count"]))
+            self.stat_count_sub.setText(stats["growth_label"])
+            self.stat_weight_val.setText(
+                f"{float(stats['weight']):,.0f} kg".replace(",", " ")
+            )
         finally:
             session.close()
 
@@ -448,6 +564,10 @@ class BagagesView(QWidget):
             session.close()
 
     def _save(self) -> None:
+        if not self.selected_ticket:
+            play_warning()
+            QMessageBox.warning(self, "Bagages", "Recherchez d'abord le code du billet du client.")
+            return
         if not self.selected_route_id:
             play_warning()
             QMessageBox.warning(self, "Bagages", "Sélectionnez un trajet.")
@@ -495,6 +615,7 @@ class BagagesView(QWidget):
                 total=montant,
                 fragile=False,
                 cashier=user,
+                ticket=self.selected_ticket,
             )
             from models.luggage import Luggage
             from sqlalchemy.orm import joinedload
@@ -505,18 +626,20 @@ class BagagesView(QWidget):
                 .filter_by(id=item.id)
                 .one()
             )
-            path = print_luggage(item, user.id)
-            play_print()
-            QMessageBox.information(
-                self,
-                "Bagage enregistré",
-                f"{item.numero} enregistré.\n{path}",
+            print_luggage(
+                item,
+                user.id,
+                printer_name=self.label_printer.currentData() or None,
             )
+            play_print()
             self.sender.clear()
             self.sender_phone.clear()
             self.description.clear()
             self.poids.setValue(0)
             self.montant.setValue(0)
+            self.ticket_code.clear()
+            self.selected_ticket = None
+            self.ticket_details.setText("Saisissez le code NG imprimé sur le billet pour charger le passager, le trajet et le bus.")
             self.refresh()
         except Exception as e:
             session.rollback()

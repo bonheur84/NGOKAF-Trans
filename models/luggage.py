@@ -26,8 +26,12 @@ class Luggage(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     poids: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     valeur_declaree: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    ticket_id: Mapped[int | None] = mapped_column(ForeignKey("tickets.id"), nullable=True, index=True)
+    ticket_numero: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     route_id: Mapped[int | None] = mapped_column(ForeignKey("routes.id"), nullable=True, index=True)
     bus_id: Mapped[int | None] = mapped_column(ForeignKey("buses.id"), nullable=True, index=True)
+    route_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bus_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     frais_base: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     supplement_poids: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
@@ -40,4 +44,5 @@ class Luggage(Base):
 
     route = relationship("Route", back_populates="luggage_items")
     bus = relationship("Bus", back_populates="luggage_items")
+    ticket = relationship("Ticket", back_populates="luggage_items")
     cashier = relationship("User", back_populates="luggage_items")

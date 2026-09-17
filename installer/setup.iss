@@ -5,6 +5,9 @@
 #define MyAppVersion "2.0.0"
 #define MyAppPublisher "NGOKAF"
 #define MyAppExeName "NGOKAF_TRANS.exe"
+#ifndef ApiBaseUrl
+  #define ApiBaseUrl "https://api.ngokaftrans.com"
+#endif
 
 [Setup]
 AppId=NGOKAF.TRANS.Desktop.2026
@@ -44,7 +47,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 ; Full PyInstaller onedir package
 Source: "..\dist\NGOKAF_TRANS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Seed user config only on first install (never overwrite existing)
+; Templates are shipped for documentation only.  The actual client .env is
+; generated in LocalAppData below and contains no database credential.
 Source: "..\.env.example"; DestDir: "{app}"; DestName: "env.ini"; Flags: onlyifdoesntexist
 Source: "..\config.ini.example"; DestDir: "{app}"; DestName: "config.ini"; Flags: onlyifdoesntexist
 Source: "..\.env.example"; DestDir: "{app}"; DestName: ".env.example"; Flags: ignoreversion
@@ -57,6 +61,7 @@ Name: "{app}\reports"
 Name: "{app}\temp"
 Name: "{app}\config"
 Name: "{app}\assets"
+Name: "{localappdata}\NGOKAF_TRANS"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -78,6 +83,21 @@ Type: files; Name: "{app}\config.ini"
 [Code]
 var
   KeepBackups: Boolean;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ClientEnv: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    ClientEnv := ExpandConstant('{localappdata}\NGOKAF_TRANS\.env');
+    if not FileExists(ClientEnv) then
+      SaveStringToFile(ClientEnv,
+        'API_BASE_URL={#ApiBaseUrl}' + #13#10 +
+        'API_TIMEOUT_SECONDS=20' + #13#10,
+        False);
+  end;
+end;
 
 function InitializeUninstall(): Boolean;
 begin

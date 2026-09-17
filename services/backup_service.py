@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from datetime import datetime
@@ -29,13 +30,16 @@ def backup_database(dest_dir: Path | None = None) -> Path:
         f"-h{settings.DB_HOST}",
         f"-P{settings.DB_PORT}",
         f"-u{settings.DB_USER}",
-        f"-p{settings.DB_PASSWORD}",
+        "--ssl-mode=REQUIRED" if settings.DB_SSL_MODE not in {"", "disabled", "false", "off", "none"} else "--skip-ssl",
         "--routines",
         "--triggers",
         settings.DB_NAME,
     ]
+    env = {**os.environ, "MYSQL_PWD": settings.DB_PASSWORD}
+    if settings.DB_SSL_CA:
+        cmd.append(f"--ssl-ca={settings.DB_SSL_CA}")
     with out.open("w", encoding="utf-8") as f:
-        result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, env=env)
     if result.returncode != 0:
         logger.error(result.stderr)
         raise RuntimeError(f"mysqldump failed: {result.stderr}")
@@ -69,11 +73,14 @@ def restore_database(sql_file: Path) -> None:
         f"-h{settings.DB_HOST}",
         f"-P{settings.DB_PORT}",
         f"-u{settings.DB_USER}",
-        f"-p{settings.DB_PASSWORD}",
+        "--ssl-mode=REQUIRED" if settings.DB_SSL_MODE not in {"", "disabled", "false", "off", "none"} else "--skip-ssl",
         settings.DB_NAME,
     ]
+    env = {**os.environ, "MYSQL_PWD": settings.DB_PASSWORD}
+    if settings.DB_SSL_CA:
+        cmd.append(f"--ssl-ca={settings.DB_SSL_CA}")
     with sql_file.open("r", encoding="utf-8") as f:
-        result = subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, text=True, env=env)
     if result.returncode != 0:
         raise RuntimeError(f"mysql restore failed: {result.stderr}")
 

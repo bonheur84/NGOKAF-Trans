@@ -358,7 +358,8 @@ class VentesView(QWidget):
         # --- Seats ---
         center = Card()
         center.layout.addWidget(_title_row(ICONS["seat"], "Sélection du Siège"))
-        self.seat_map = SeatMapWidget(60)
+        # Seats are built after a route (and therefore its bus) is selected.
+        self.seat_map = SeatMapWidget(0)
         self.seat_map.seat_selected.connect(lambda _: self._update_totals())
         center.layout.addWidget(self.seat_map, 1)
 
@@ -410,6 +411,10 @@ class VentesView(QWidget):
 
     def _on_route_changed(self) -> None:
         route = self._current_route()
+        # The seat map must reflect the capacity configured by the administrator
+        # for the currently selected bus, rather than its former default of 60.
+        capacity = route.bus.capacite if route and route.bus else 0
+        self.seat_map.set_capacity(capacity)
         self.price.blockSignals(True)
         if route and route.prix_indicatif is not None:
             self.price.setValue(float(route.prix_indicatif))
@@ -448,6 +453,20 @@ class VentesView(QWidget):
         )
 
         self._update_totals()
+
+    def refresh_live(self) -> None:
+        """Update occupancy without rebuilding controls or interrupting data entry."""
+        route = self._current_route()
+        if not route:
+            return
+        qd = self.travel_date.date()
+        travel = date(qd.year(), qd.month(), qd.day())
+        session = get_session()
+        try:
+            self.seat_map.set_occupied(occupied_seats(session, route.bus_id, route.id, travel))
+            self._update_fill_bar()
+        finally:
+            session.close()
 
     def _update_totals(self) -> None:
         price = Decimal(int(self.price.value()))
@@ -567,33 +586,14 @@ class VentesView(QWidget):
             )
 
             is_full = getattr(ticket, "is_bus_full", False)
-            seats_remaining = getattr(ticket, "seats_remaining", None)
 
             try:
-                path = print_ticket(ticket, user_id=user.id if user else None)
-                print_info = f"Imprimé : {path.name}"
+                print_ticket(ticket, user_id=user.id if user else None)
             except Exception:
-                print_info = "Impression échouée"
-
-            # ── Alert when few seats remain (not full yet) ────────────────────
-            if not is_full and seats_remaining is not None and seats_remaining <= 5:
-                play_warning()
-                QMessageBox.information(
-                    self,
-                    "Sièges limités",
-                    f"Billet {ticket.numero} enregistré.\n{print_info}\n\n"
-                    f"Il ne reste plus que {seats_remaining} siège(s) disponible(s) !"
-                )
-                self._reset()
-                self.refresh()
-                return
+                # A printing issue must not cancel an already recorded sale.
+                pass
 
             play_print()
-            QMessageBox.information(
-                self,
-                "Billet enregistré",
-                f"Billet {ticket.numero} enregistré.\n{print_info}",
-            )
 
             if is_full:
                 # ── Bus is full: play special alert + ask for confirmation ────
@@ -645,7 +645,8 @@ class VentesView(QWidget):
             self,
             "Réactiver le bus",
             f"Voulez-vous réactiver le bus et le trajet\n"
-            f"<b>{route.label}</b> ?",
+            f"<b>{route.label}</b> ?\n\n"
+            "Les sièges du départ sélectionné seront libérés pour le prochain voyage.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -658,7 +659,15 @@ class VentesView(QWidget):
             from models.route import Route
             db_route = session.get(Route, route.id)
             if db_route:
-                reactivate_bus(session, db_route.bus, uid)
+                qd = self.travel_date.date()
+                travel = date(qd.year(), qd.month(), qd.day())
+                reactivate_bus(
+                    session,
+                    db_route.bus,
+                    uid,
+                    route_id=db_route.id,
+                    travel_date=travel,
+                )
                 db_route.statut = "actif"
                 session.commit()
             play_success()

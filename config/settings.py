@@ -83,6 +83,21 @@ class Settings:
     DB_USER = _get("database", "user", "DB_USER", "root")
     DB_PASSWORD = _get("database", "password", "DB_PASSWORD", "")
     DB_NAME = _get("database", "name", "DB_NAME", "ngokaf_trans")
+    DB_SSL_MODE = _get("database", "ssl_mode", "DB_SSL_MODE", "disabled").lower()
+    DB_SSL_CA = _get("database", "ssl_ca", "DB_SSL_CA", "")
+    DB_CONNECT_TIMEOUT = int(_get("database", "connect_timeout", "DB_CONNECT_TIMEOUT", "10"))
+    DB_CREATE_DATABASE = _get("database", "create_database", "DB_CREATE_DATABASE", "true").lower() in {
+        "1", "true", "yes", "on"
+    }
+
+    # Desktop clients use the central HTTPS API.  This URL is public by
+    # design: database credentials stay exclusively on the API server.
+    API_BASE_URL = _get("api", "base_url", "API_BASE_URL", "").rstrip("/")
+    API_TIMEOUT_SECONDS = int(_get("api", "timeout_seconds", "API_TIMEOUT_SECONDS", "20"))
+
+    @property
+    def uses_remote_api(self) -> bool:
+        return bool(self.API_BASE_URL)
 
     AGENCY_NAME = _get("agency", "name", "AGENCY_NAME", "NGOKAF TRANS")
     AGENCY_ADDRESS = _get("agency", "address", "AGENCY_ADDRESS", "Douala, Cameroun")
@@ -114,6 +129,21 @@ class Settings:
             f"mysql+pymysql://{user}:{password}"
             f"@{self.DB_HOST}:{self.DB_PORT}/?charset=utf8mb4"
         )
+
+    @property
+    def database_connect_args(self) -> dict:
+        """Driver arguments for secure local or managed MySQL connections."""
+        args: dict = {"connect_timeout": self.DB_CONNECT_TIMEOUT}
+        if self.DB_SSL_MODE not in {"", "disabled", "false", "off", "none"}:
+            ssl: dict = {}
+            if self.DB_SSL_CA:
+                ssl["ca"] = self.DB_SSL_CA
+            if self.DB_SSL_MODE == "verify_ca":
+                if not self.DB_SSL_CA:
+                    raise ValueError("DB_SSL_CA est obligatoire avec DB_SSL_MODE=verify_ca.")
+                ssl["check_hostname"] = False
+            args["ssl"] = ssl
+        return args
 
     @property
     def logo_path(self) -> Path:

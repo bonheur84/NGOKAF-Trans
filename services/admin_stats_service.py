@@ -15,6 +15,8 @@ from models.ticket import Ticket
 from models.user import User
 from services.agency_context import current_agency_id
 
+REVENUE_TICKET_STATUSES = ("vendu", "termine")
+
 
 def _money(v) -> Decimal:
     if v is None:
@@ -40,7 +42,7 @@ def dashboard_kpis(session: Session, agency_id: int | None = None) -> dict:
     year_start = date(today.year, 1, 1)
 
     tq = session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
-        Ticket.date_vente == today, Ticket.statut == "vendu"
+        Ticket.date_vente == today, Ticket.statut.in_(REVENUE_TICKET_STATUSES)
     )
     tq = _filter_agency(tq, Ticket, aid)
     tickets_today = tq.one()
@@ -52,7 +54,7 @@ def dashboard_kpis(session: Session, agency_id: int | None = None) -> dict:
     luggage_today = lq.scalar()
 
     wq = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
-        Ticket.date_vente >= week_start, Ticket.statut == "vendu"
+        Ticket.date_vente >= week_start, Ticket.statut.in_(REVENUE_TICKET_STATUSES)
     )
     wq = _filter_agency(wq, Ticket, aid)
     week_rev = wq.scalar()
@@ -64,7 +66,7 @@ def dashboard_kpis(session: Session, agency_id: int | None = None) -> dict:
     week_lug = wlq.scalar()
 
     yq = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
-        Ticket.date_vente >= year_start, Ticket.statut == "vendu"
+        Ticket.date_vente >= year_start, Ticket.statut.in_(REVENUE_TICKET_STATUSES)
     )
     yq = _filter_agency(yq, Ticket, aid)
     year_rev = yq.scalar()
@@ -75,7 +77,7 @@ def dashboard_kpis(session: Session, agency_id: int | None = None) -> dict:
     ylq = _filter_agency(ylq, Luggage, aid)
     year_lug = ylq.scalar()
 
-    voy_q = session.query(Ticket).filter(Ticket.statut == "vendu")
+    voy_q = session.query(Ticket).filter(Ticket.statut.in_(REVENUE_TICKET_STATUSES))
     bag_q = session.query(Luggage)
     bus_q = session.query(Bus).filter(Bus.statut == "actif")
     drv_q = session.query(Driver).filter(Driver.statut == "actif")
@@ -109,7 +111,7 @@ def revenue_by_day(
     tq = session.query(Ticket.date_vente, func.coalesce(func.sum(Ticket.price), 0)).filter(
         Ticket.date_vente >= start,
         Ticket.date_vente <= end,
-        Ticket.statut == "vendu",
+        Ticket.statut.in_(REVENUE_TICKET_STATUSES),
     )
     ticket_rows = _filter_agency(tq, Ticket, aid).group_by(Ticket.date_vente).all()
 
@@ -142,7 +144,7 @@ def revenue_breakdown(session: Session, days: int = 30, agency_id: int | None = 
     aid = _aid(agency_id)
     start = date.today() - timedelta(days=days - 1)
     tq = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
-        Ticket.date_vente >= start, Ticket.statut == "vendu"
+        Ticket.date_vente >= start, Ticket.statut.in_(REVENUE_TICKET_STATUSES)
     )
     tickets = _filter_agency(tq, Ticket, aid).scalar()
     lq = session.query(func.coalesce(func.sum(Luggage.total), 0)).filter(
@@ -178,7 +180,7 @@ def sales_by_route(
         .filter(
             Ticket.date_vente >= start,
             Ticket.date_vente <= end,
-            Ticket.statut == "vendu",
+            Ticket.statut.in_(REVENUE_TICKET_STATUSES),
         )
     )
     if aid is not None:
@@ -205,7 +207,7 @@ def top_cashiers(
             func.count(Ticket.id),
         )
         .join(Ticket, Ticket.cashier_id == User.id)
-        .filter(Ticket.date_vente >= start, Ticket.statut == "vendu")
+        .filter(Ticket.date_vente >= start, Ticket.statut.in_(REVENUE_TICKET_STATUSES))
     )
     if aid is not None:
         q = q.filter(User.agency_id == aid, Ticket.agency_id == aid)
@@ -223,7 +225,7 @@ def period_kpis(session: Session, start: date, end: date, agency_id: int | None 
     tq = session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
         Ticket.date_vente >= start,
         Ticket.date_vente <= end,
-        Ticket.statut == "vendu",
+        Ticket.statut.in_(REVENUE_TICKET_STATUSES),
     )
     tickets = _filter_agency(tq, Ticket, aid).one()
     lq = session.query(func.coalesce(func.sum(Luggage.total), 0), func.count(Luggage.id)).filter(
@@ -242,7 +244,9 @@ def period_kpis(session: Session, start: date, end: date, agency_id: int | None 
 
 def fleet_revenue(session: Session, agency_id: int | None = None) -> Decimal:
     aid = _aid(agency_id)
-    tq = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(Ticket.statut == "vendu")
+    tq = session.query(func.coalesce(func.sum(Ticket.price), 0)).filter(
+        Ticket.statut.in_(REVENUE_TICKET_STATUSES)
+    )
     lq = session.query(func.coalesce(func.sum(Luggage.total), 0))
     t = _filter_agency(tq, Ticket, aid).scalar()
     l = _filter_agency(lq, Luggage, aid).scalar()
@@ -256,7 +260,7 @@ def sales_heatmap(session: Session, days: int = 30, agency_id: int | None = None
         func.dayofweek(Ticket.date_vente),
         func.hour(Ticket.created_at),
         func.count(Ticket.id),
-    ).filter(Ticket.date_vente >= start, Ticket.statut == "vendu")
+    ).filter(Ticket.date_vente >= start, Ticket.statut.in_(REVENUE_TICKET_STATUSES))
     rows = _filter_agency(q, Ticket, aid).group_by(
         func.dayofweek(Ticket.date_vente), func.hour(Ticket.created_at)
     ).all()

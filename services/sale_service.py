@@ -1,6 +1,7 @@
 """Ticket sales and seat occupation."""
 from __future__ import annotations
 
+import random
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -13,11 +14,6 @@ from models.route import Route
 from models.bus import Bus
 from models.user import User
 from services.audit_service import log_audit
-
-# Seuil d'alerte : avertir quand il reste ce nombre de sièges ou moins
-SEATS_ALERT_THRESHOLD = 5
-
-
 
 def next_ticket_number(session: Session, sale_date: date | None = None, agency_id: int | None = None) -> str:
     sale_date = sale_date or date.today()
@@ -34,6 +30,29 @@ def next_ticket_number(session: Session, sale_date: date | None = None, agency_i
     return f"TK-{seq.value:04d}"
 
 
+def next_luggage_code(session: Session, travel_date: date) -> str:
+    """Create the unique baggage code printed on every passenger ticket.
+
+    The code is intentionally independent from the ticket number so the
+    baggage desk can use a short, label-oriented format: NG-YYMMDD-XXXXX.
+    """
+    date_part = travel_date.strftime("%y%m%d")
+    for _ in range(50):
+        code = f"NG-{date_part}-{random.randint(10000, 99999)}"
+        if not session.query(Ticket.id).filter(Ticket.luggage_code == code).first():
+            return code
+    raise RuntimeError("Impossible de générer un code bagage unique.")
+
+
+def ensure_ticket_luggage_codes(session: Session) -> int:
+    """Backfill the baggage code for tickets created before this feature."""
+    tickets = session.query(Ticket).filter(Ticket.luggage_code.is_(None)).all()
+    for ticket in tickets:
+        ticket.luggage_code = next_luggage_code(session, ticket.travel_date)
+    session.flush()
+    return len(tickets)
+
+
 def occupied_seats(
     session: Session,
     bus_id: int,
@@ -42,6 +61,7 @@ def occupied_seats(
 ) -> set[int]:
     rows = (
         session.query(Ticket.seat_number)
+        .with_hint(Ticket, "USE INDEX (ix_tickets_seat_availability)", dialect_name="mysql")
         .filter(
             Ticket.bus_id == bus_id,
             Ticket.route_id == route_id,
@@ -103,6 +123,7 @@ def sell_ticket(
 
     sale_date = date.today()
     numero = next_ticket_number(session, sale_date, cashier.agency_id)
+    luggage_code = next_luggage_code(session, travel_date)
     heure = route.heure_depart.strftime("%H:%M")
     qr = build_qr_payload(
         numero,
@@ -118,6 +139,7 @@ def sell_ticket(
     )
     ticket = Ticket(
         numero=numero,
+        luggage_code=luggage_code,
         date_vente=sale_date,
         passenger_name=passenger_name.strip(),
         phone=phone.strip(),
@@ -146,17 +168,6 @@ def sell_ticket(
     is_bus_full = len(new_occupied) >= bus.capacite
     seats_remaining = max(0, bus.capacite - len(new_occupied))
 
-    # Notify when few seats remain (but not when full — that has its own dialog)
-    if not is_bus_full and seats_remaining <= SEATS_ALERT_THRESHOLD:
-        from services.notification_service import notify_seats_low
-        notify_seats_low(
-            session,
-            bus.id,
-            f"{bus.code} ({route.short_label})",
-            seats_remaining,
-            cashier.id,
-        )
-
     if is_bus_full:
         # Notify only — deactivation is confirmed by the user in the UI
         from services.notification_service import notify_bus_full
@@ -182,8 +193,8 @@ def cancel_ticket(
         raise ValueError("Billet introuvable.")
     if ticket.agency_id != cashier.agency_id:
         raise ValueError("Ce billet n'appartient pas à votre agence.")
-    if ticket.statut == "annule":
-        raise ValueError("Billet déjà annulé.")
+    if ticket.statut != "vendu":
+        raise ValueError("Seul un billet vendu peut être annulé.")
     ticket.statut = "annule"
     session.add(
         TicketCancellation(

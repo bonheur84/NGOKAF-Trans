@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 class AppSession:
     user: "User | None" = None
     agency: "Agency | None" = None
+    access_token: str | None = None
 
     @property
     def is_authenticated(self) -> bool:
@@ -21,6 +22,7 @@ class AppSession:
     def clear(self) -> None:
         self.user = None
         self.agency = None
+        self.access_token = None
 
 
 current_session = AppSession()

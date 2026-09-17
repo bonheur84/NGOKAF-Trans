@@ -46,9 +46,14 @@ ALTERS: dict[str, list[tuple[str, str]]] = {
     ],
     "tickets": [
         ("agency_id", "INT NULL"),
+        ("luggage_code", "VARCHAR(30) NULL"),
     ],
     "luggage": [
         ("agency_id", "INT NULL"),
+        ("ticket_id", "INT NULL"),
+        ("ticket_numero", "VARCHAR(20) NULL"),
+        ("route_label", "VARCHAR(255) NULL"),
+        ("bus_code", "VARCHAR(50) NULL"),
     ],
     "sequences": [
         ("agency_id", "INT NULL"),
@@ -116,6 +121,39 @@ def migrate_schema(engine: Engine) -> None:
         except Exception:
             pass
 
+        # Query paths used continuously by sales, baggage check-in, and KPI cards.
+        # Each statement is idempotent in practice: duplicate-index errors are ignored.
+        indexes = [
+            "CREATE UNIQUE INDEX uq_tickets_luggage_code ON tickets (luggage_code)",
+            "CREATE INDEX ix_tickets_agency_date_status ON tickets (agency_id, date_vente, statut)",
+            "CREATE INDEX ix_tickets_agency_created ON tickets (agency_id, created_at)",
+            "CREATE INDEX ix_tickets_seat_availability ON tickets (bus_id, route_id, travel_date, statut, seat_number)",
+            "CREATE INDEX ix_luggage_agency_created_status ON luggage (agency_id, created_at, statut)",
+            "CREATE INDEX ix_luggage_ticket_lookup ON luggage (ticket_id)",
+        ]
+        for statement in indexes:
+            try:
+                conn.execute(text(statement))
+            except Exception:
+                pass
+        # FK for luggage.ticket_id if the link column exists and the FK is missing.
+        try:
+            if _column_exists(engine, "luggage", "ticket_id"):
+                try:
+                    conn.execute(
+                        text(
+                            """
+                            ALTER TABLE `luggage`
+                            ADD CONSTRAINT `fk_luggage_ticket`
+                            FOREIGN KEY (`ticket_id`) REFERENCES `tickets`(`id`)
+                            """
+                        )
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
 
 
 # Columns to modify (make nullable) — format: (table, column, new DDL)
@@ -157,4 +195,3 @@ def migrate_nullable(engine: Engine) -> None:
                 logger.info("Made nullable: %s.%s", table, col)
             except Exception as e:
                 logger.warning("Could not modify %s.%s: %s", table, col, e)
-

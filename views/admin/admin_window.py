@@ -91,6 +91,7 @@ class AdminWindow(QMainWindow):
         ("Utilisateurs", "users", "Gestion des Utilisateurs"),
         ("Finance", "expense", "Gestion Financière"),
         ("Rapports", "reports", "Rapports"),
+        ("Bagages DB", "bagages", "Base de données Bagages"),
         ("Paramètres", "settings", "Paramètres"),
     ]
 
@@ -107,6 +108,9 @@ class AdminWindow(QMainWindow):
         self._clock_timer = QTimer(self)
         self._clock_timer.timeout.connect(self._tick_clock)
         self._clock_timer.start(1000)
+        self._live_timer = QTimer(self)
+        self._live_timer.timeout.connect(self._refresh_current_page)
+        self._live_timer.start(1000)
         self._tick_clock()
         self._notif_timer = QTimer(self)
         self._notif_timer.timeout.connect(self._refresh_notif_badge)
@@ -275,6 +279,9 @@ class AdminWindow(QMainWindow):
             from views.admin.rapports_view import RapportsView
             page = RapportsView()
         elif index == 7:
+            from views.admin.bagages_db_view import BagagesDBView
+            page = BagagesDBView()
+        elif index == 8:
             from views.admin.parametres_view import ParametresView
             page = ParametresView()
         else:
@@ -315,6 +322,11 @@ class AdminWindow(QMainWindow):
 
     def _tick_clock(self) -> None:
         self.date_lbl.setText(format_long_date(datetime.now()))
+
+    def _refresh_current_page(self) -> None:
+        page = self.stack.currentWidget()
+        if page and hasattr(page, "refresh_live"):
+            page.refresh_live()
 
     def _logout(self) -> None:
         current_session.clear()

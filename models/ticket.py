@@ -21,6 +21,7 @@ class Ticket(Base):
         ForeignKey("agencies.id"), nullable=True, index=True
     )
     numero: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    luggage_code: Mapped[str | None] = mapped_column(String(30), unique=True, nullable=True, index=True)
     date_vente: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     passenger_name: Mapped[str] = mapped_column(String(150), nullable=False)
     phone: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
@@ -37,6 +38,7 @@ class Ticket(Base):
     route = relationship("Route", back_populates="tickets")
     bus = relationship("Bus", back_populates="tickets")
     cashier = relationship("User", back_populates="tickets")
+    luggage_items = relationship("Luggage", back_populates="ticket")
     cancellation = relationship("TicketCancellation", back_populates="ticket", uselist=False, cascade="all, delete-orphan")
 
 

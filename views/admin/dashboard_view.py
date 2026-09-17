@@ -121,6 +121,7 @@ class DashboardView(QWidget):
         head.addWidget(self.auto_refresh_chk)
 
         self.refresh_interval = QComboBox()
+        self.refresh_interval.addItem("1 seconde (indicateurs)", 1)
         self.refresh_interval.addItem("30 secondes", 30)
         self.refresh_interval.addItem("1 minute", 60)
         self.refresh_interval.addItem("5 minutes", 300)
@@ -237,7 +238,9 @@ class DashboardView(QWidget):
     def toggle_auto_refresh(self) -> None:
         if self.auto_refresh_chk.isChecked():
             secs = self.refresh_interval.currentData()
-            self.refresh_timer.start(secs * 1000)
+            # At one second, the application shell updates the lightweight
+            # KPI cards live. Full chart redraws remain intentionally spaced.
+            self.refresh_timer.start((30 if secs == 1 else secs) * 1000)
         else:
             self.refresh_timer.stop()
 
@@ -309,6 +312,19 @@ class DashboardView(QWidget):
                 self.top_box.addWidget(row)
             self.top_box.addStretch()
 
+        finally:
+            session.close()
+
+    def refresh_live(self) -> None:
+        """Refresh only small KPI queries; charts stay on the normal interval."""
+        session = get_session()
+        try:
+            k = stats.dashboard_kpis(session)
+            set_kpi(self.k_recette, format_fc(k["recettes_jour"]))
+            set_kpi(self.k_billets, str(k["billets_jour"]))
+            set_kpi(self.k_bag, str(k["bagages"]))
+            set_kpi(self.k_bus, str(k["bus"]))
+            set_kpi(self.k_trj, str(k["trajets"]))
         finally:
             session.close()
 

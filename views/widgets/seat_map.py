@@ -1,4 +1,4 @@
-"""Seat map 2-2 layout with 60 seats."""
+"""Seat map 2-2 layout sized to the selected bus capacity."""
 from __future__ import annotations
 
 from PySide6.QtCore import Signal, Qt
@@ -56,16 +56,15 @@ class SeatMapWidget(QWidget):
 
     def __init__(self, capacity: int = 60, parent=None):
         super().__init__(parent)
-        self.capacity = capacity
+        self.capacity = max(0, int(capacity))
         self.selected: int | None = None
         self.buttons: dict[int, SeatButton] = {}
+        self._root = QVBoxLayout(self)
+        self._root.setContentsMargins(0, 0, 0, 0)
+        self._root.setSpacing(8)
         self._build()
 
     def _build(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(8)
-
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
@@ -94,7 +93,7 @@ class SeatMapWidget(QWidget):
             row += 1
 
         scroll.setWidget(inner)
-        root.addWidget(scroll, 1)
+        self._root.addWidget(scroll, 1)
 
         legend = QHBoxLayout()
         legend.setSpacing(12)
@@ -113,7 +112,7 @@ class SeatMapWidget(QWidget):
             lbl.setStyleSheet(f"color:#4A3A1B; font-size:11px; font-weight:700;")
             legend.addWidget(lbl)
         legend.addStretch()
-        root.addLayout(legend)
+        self._root.addLayout(legend)
 
         sel = QFrame()
         sel.setStyleSheet(
@@ -130,7 +129,40 @@ class SeatMapWidget(QWidget):
         sel_l.addWidget(t)
         sel_l.addStretch()
         sel_l.addWidget(self.sel_value)
-        root.addWidget(sel)
+        self._root.addWidget(sel)
+
+    def set_capacity(self, capacity: int) -> None:
+        """Rebuild the map so it contains exactly the bus's seats."""
+        capacity = max(0, int(capacity or 0))
+        if capacity == self.capacity:
+            self.clear_selection()
+            return
+
+        self.clear_selection()
+        while self._root.count():
+            item = self._root.takeAt(0)
+            widget = item.widget()
+            child_layout = item.layout()
+            if widget is not None:
+                widget.deleteLater()
+            elif child_layout is not None:
+                self._delete_layout(child_layout)
+
+        self.capacity = capacity
+        self.buttons.clear()
+        self._build()
+
+    @staticmethod
+    def _delete_layout(layout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            child_layout = item.layout()
+            if widget is not None:
+                widget.deleteLater()
+            elif child_layout is not None:
+                SeatMapWidget._delete_layout(child_layout)
+        layout.deleteLater()
 
     def _on_click(self, number: int) -> None:
         btn = self.buttons.get(number)

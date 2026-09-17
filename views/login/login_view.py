@@ -19,8 +19,8 @@ from PySide6.QtWidgets import (
 from config.settings import settings
 from resources import theme as T
 from services import auth_service
-from database.session import get_session
-from services.session_store import current_session
+from controllers.auth_controller import AuthController
+from services.api_client import ApiError
 from utils.icons import fa_icon, apply_button_icon, ICONS
 
 
@@ -232,9 +232,8 @@ class LoginView(QWidget):
         if not user or not pwd:
             self.error.setText("Veuillez saisir le nom d'utilisateur et le mot de passe.")
             return
-        session = get_session()
         try:
-            account = auth_service.authenticate(session, user, pwd)
+            account = AuthController().login(user, pwd)
             if not account:
                 self.error.setText("Identifiants incorrects.")
                 return
@@ -246,5 +245,5 @@ class LoginView(QWidget):
             # Defer to next event loop cycle so this method finishes cleanly
             # before the window transition (login close + new window open)
             QTimer.singleShot(0, self.login_success.emit)
-        finally:
-            session.close()
+        except ApiError as exc:
+            self.error.setText(str(exc))

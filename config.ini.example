@@ -5,6 +5,12 @@ user = root
 password = your_password
 name = ngokaf_trans
 
+# Postes clients : une seule valeur non sensible, fournie par l'installateur.
+# Laissez la section [database] vide ou supprimez-la sur les postes de caisse.
+[api]
+base_url = https://api.ngokaftrans.com
+timeout_seconds = 20
+
 [agency]
 name = NGOKAF TRANS
 address = BP 1245 - Douala, Cameroun

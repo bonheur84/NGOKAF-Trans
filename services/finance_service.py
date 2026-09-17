@@ -12,6 +12,8 @@ from models.luggage import Luggage
 from models.ticket import Ticket
 from services.agency_context import current_agency_id, require_agency_id
 
+REVENUE_TICKET_STATUSES = ("vendu", "termine")
+
 
 def _money(v) -> Decimal:
     if v is None:
@@ -131,7 +133,7 @@ def get_revenue_by_period(
         target_date = start_date or date.today()
         ticket_rev = _ticket_q(
             session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
-                Ticket.date_vente == target_date, Ticket.statut == "vendu"
+                Ticket.date_vente == target_date, Ticket.statut.in_(REVENUE_TICKET_STATUSES)
             )
         ).one()
         luggage_rev = _lug_q(
@@ -149,7 +151,7 @@ def get_revenue_by_period(
             session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
                 Ticket.date_vente >= start_date,
                 Ticket.date_vente <= end_date,
-                Ticket.statut == "vendu",
+                Ticket.statut.in_(REVENUE_TICKET_STATUSES),
             )
         ).one()
         luggage_rev = _lug_q(
@@ -168,7 +170,7 @@ def get_revenue_by_period(
             session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
                 Ticket.date_vente >= start_date,
                 Ticket.date_vente <= end_date,
-                Ticket.statut == "vendu",
+                Ticket.statut.in_(REVENUE_TICKET_STATUSES),
             )
         ).one()
         luggage_rev = _lug_q(
@@ -187,7 +189,7 @@ def get_revenue_by_period(
             session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
                 Ticket.date_vente >= start_date,
                 Ticket.date_vente <= end_date,
-                Ticket.statut == "vendu",
+                Ticket.statut.in_(REVENUE_TICKET_STATUSES),
             )
         ).one()
         luggage_rev = _lug_q(
@@ -201,7 +203,7 @@ def get_revenue_by_period(
             session.query(func.coalesce(func.sum(Ticket.price), 0), func.count(Ticket.id)).filter(
                 Ticket.date_vente >= start_date,
                 Ticket.date_vente <= end_date,
-                Ticket.statut == "vendu",
+                Ticket.statut.in_(REVENUE_TICKET_STATUSES),
             )
         ).one()
         luggage_rev = _lug_q(

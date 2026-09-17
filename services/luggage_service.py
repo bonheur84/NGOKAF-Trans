@@ -1,6 +1,7 @@
 """Luggage registration service."""
 from __future__ import annotations
 
+import random
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -11,6 +12,7 @@ from models.luggage import Luggage
 from models.sequence import Sequence
 from models.route import Route
 from models.bus import Bus
+from models.ticket import Ticket
 from models.user import User
 from services.agency_context import current_agency_id
 from services.audit_service import log_audit
@@ -18,6 +20,11 @@ from services.settings_service import get_setting
 
 
 def next_luggage_number(session: Session, agency_id: int | None = None) -> str:
+    """Generate a professional unique luggage code: NG-YYMMDD-XXXXX.
+
+    Format: NG-{date}-{5-digit random} ensuring uniqueness via DB check.
+    The internal Sequence is still incremented for ordering purposes.
+    """
     today = date.today()
     aid = agency_id
     q = session.query(Sequence).filter(Sequence.name == "luggage", Sequence.seq_date == today)
@@ -25,22 +32,22 @@ def next_luggage_number(session: Session, agency_id: int | None = None) -> str:
         q = q.filter(Sequence.agency_id == aid)
     seq = q.with_for_update().first()
     if not seq:
-        last_q = session.query(Luggage.numero)
-        if aid is not None:
-            last_q = last_q.filter(Luggage.agency_id == aid)
-        last = last_q.order_by(Luggage.id.desc()).first()
-        start_value = 0
-        if last:
-            try:
-                start_value = int(last[0].split("-")[-1])
-            except (ValueError, IndexError):
-                start_value = 0
-        seq = Sequence(name="luggage", seq_date=today, value=start_value, agency_id=aid)
+        seq = Sequence(name="luggage", seq_date=today, value=0, agency_id=aid)
         session.add(seq)
         session.flush()
     seq.value += 1
     session.flush()
-    return f"BG-{seq.value:06d}"
+
+    date_part = today.strftime("%y%m%d")
+    # Generate a unique random 5-digit suffix; retry on collision
+    for _ in range(20):
+        suffix = random.randint(10000, 99999)
+        candidate = f"NG-{date_part}-{suffix}"
+        exists = session.query(Luggage.id).filter(Luggage.numero == candidate).first()
+        if not exists:
+            return candidate
+    # Fallback: use sequential counter if all randoms collide (extremely rare)
+    return f"NG-{date_part}-{seq.value:05d}"
 
 
 def calculate_fees(
@@ -78,6 +85,7 @@ def register_luggage(
     total: Decimal | None,
     fragile: bool,
     cashier: User,
+    ticket: Ticket | None = None,
 ) -> Luggage:
     if not cashier.agency_id:
         raise ValueError("Caissier sans agence assignée.")
@@ -91,6 +99,12 @@ def register_luggage(
         raise ValueError("Bus introuvable.")
     if bus.agency_id != cashier.agency_id:
         raise ValueError("Ce bus n'appartient pas à votre agence.")
+    if ticket is None:
+        raise ValueError("Recherchez le billet du client avant d'enregistrer le bagage.")
+    if ticket.agency_id != cashier.agency_id or ticket.statut != "vendu":
+        raise ValueError("Billet invalide pour l'enregistrement du bagage.")
+    if ticket.route_id != route.id or ticket.bus_id != bus.id:
+        raise ValueError("Le billet ne correspond pas au trajet sélectionné.")
 
     base, supp, calc_total = calculate_fees(session, poids, frais_base, agency_id=cashier.agency_id)
     if supplement_poids is not None:
@@ -118,8 +132,12 @@ def register_luggage(
         description=description.strip(),
         poids=poids,
         valeur_declaree=valeur_declaree,
+        ticket_id=ticket.id,
+        ticket_numero=ticket.numero,
         route_id=route.id,
         bus_id=bus.id,
+        route_label=route.short_label,
+        bus_code=bus.code,
         frais_base=base,
         supplement_poids=supp,
         total=calc_total,
@@ -136,6 +154,22 @@ def register_luggage(
     session.commit()
     session.refresh(item)
     return item
+
+
+def find_ticket_for_luggage(
+    session: Session, ticket_number: str, agency_id: int | None = None
+) -> Ticket | None:
+    """Return a valid agency ticket, with its route and bus, for baggage check-in."""
+    aid = agency_id if agency_id is not None else current_agency_id()
+    code = ticket_number.strip()
+    if not code:
+        return None
+    q = session.query(Ticket).options(
+        joinedload(Ticket.route), joinedload(Ticket.bus), joinedload(Ticket.cashier)
+    ).filter(Ticket.luggage_code == code.upper(), Ticket.statut == "vendu")
+    if aid is not None:
+        q = q.filter(Ticket.agency_id == aid)
+    return q.order_by(Ticket.created_at.desc()).first()
 
 
 def update_luggage_status(
@@ -165,14 +199,26 @@ from sqlalchemy import func, text
 
 
 def reset_daily_luggage_links(session: Session) -> int:
-    """Detach route_id and bus_id from past days' luggage so past routes/buses can be deleted/cleaned safely."""
+    """Archive past routing values before detaching deleted/live relationships."""
     today_start = datetime.combine(date.today(), time.min)
-    res = session.execute(
-        text("UPDATE luggage SET route_id = NULL, bus_id = NULL WHERE created_at < :today_start AND (route_id IS NOT NULL OR bus_id IS NOT NULL)"),
-        {"today_start": today_start},
+    items = (
+        session.query(Luggage)
+        .options(joinedload(Luggage.route), joinedload(Luggage.bus))
+        .filter(
+            Luggage.created_at < today_start,
+            (Luggage.route_id.is_not(None)) | (Luggage.bus_id.is_not(None)),
+        )
+        .all()
     )
+    for item in items:
+        if item.route and not item.route_label:
+            item.route_label = item.route.short_label
+        if item.bus and not item.bus_code:
+            item.bus_code = item.bus.code
+        item.route_id = None
+        item.bus_id = None
     session.commit()
-    return res.rowcount
+    return len(items)
 
 
 def list_luggage_for_bus(

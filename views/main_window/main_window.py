@@ -93,6 +93,9 @@ class MainWindow(QMainWindow):
         self._clock_timer = QTimer(self)
         self._clock_timer.timeout.connect(self._tick_clock)
         self._clock_timer.start(1000)
+        self._live_timer = QTimer(self)
+        self._live_timer.timeout.connect(self._refresh_current_page)
+        self._live_timer.start(1000)
         self._tick_clock()
 
     def _build(self) -> None:
@@ -269,6 +272,11 @@ class MainWindow(QMainWindow):
 
     def _tick_clock(self) -> None:
         self.date_lbl.setText(format_long_date(datetime.now()))
+
+    def _refresh_current_page(self) -> None:
+        page = self.stack.currentWidget()
+        if page and hasattr(page, "refresh_live"):
+            page.refresh_live()
 
     def _logout(self) -> None:
         current_session.clear()

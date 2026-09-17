@@ -13,7 +13,6 @@ from utils.runtime_bootstrap import show_bootstrap_errors, verify_critical_resou
 from utils.logging_setup import setup_logging
 from utils.fonts import load_fonts
 from utils.styles import global_stylesheet
-from database.init_db import init_database
 from services.session_store import current_session
 from services.auto_backup_service import get_auto_backup_service
 
@@ -83,14 +82,22 @@ class Application:
         self.login = None
         self.main = None
         self.admin = None
-        # Start auto-backup service
-        get_auto_backup_service()
+        # Backups run on the server in API mode.  A cashier PC has neither
+        # MySQL credentials nor a local database to back up.
+        if not settings.uses_remote_api:
+            get_auto_backup_service()
 
     def bootstrap(self) -> bool:
         issues = verify_critical_resources(RESOURCE_ROOT)
         if issues:
             show_bootstrap_errors(issues)
         try:
+            if settings.uses_remote_api:
+                from services.api_client import ApiClient
+
+                ApiClient().health()
+                return True
+            from database.init_db import init_database
             init_database()
             return True
         except Exception as e:
@@ -98,9 +105,11 @@ class Application:
             QMessageBox.critical(
                 None,
                 "Erreur base de données",
-                f"Impossible d'initialiser MySQL.\n\n{e}\n\n"
-                "Vérifiez que MySQL tourne et que le fichier .env "
-                f"({settings.ROOT / '.env'}) est correctement configuré.",
+                ("Impossible de joindre l'API centrale." if settings.uses_remote_api else "Impossible d'initialiser MySQL.")
+                + f"\n\n{e}\n\n"
+                + ("Vérifiez la connexion Internet et l'URL API_BASE_URL." if settings.uses_remote_api else
+                   "Vérifiez que MySQL tourne et que le fichier .env "
+                   f"({settings.ROOT / '.env'}) est correctement configuré."),
             )
             return False
 
@@ -147,7 +156,12 @@ class Application:
         self.app.processEvents()
 
         try:
-            if user and user.is_admin:
+            if settings.uses_remote_api:
+                from views.remote_cashier_window import RemoteCashierWindow
+                self.main = RemoteCashierWindow()
+                self.main.logout_requested.connect(self.show_login)
+                self.main.showMaximized()
+            elif user and user.is_admin:
                 from views.admin.admin_window import AdminWindow
                 self.admin = AdminWindow()
                 self.admin.logout_requested.connect(self.show_login)
