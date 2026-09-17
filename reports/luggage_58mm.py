@@ -9,6 +9,7 @@ import barcode
 from barcode.writer import ImageWriter
 import qrcode
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 
@@ -38,70 +39,78 @@ def generate_luggage_label_pdf(item, path: Path | None = None) -> Path:
 
     c = canvas.Canvas(str(out), pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
     w = LABEL_WIDTH
+    c.setFillColorRGB(1, 1, 1)
+    c.rect(0, 0, LABEL_WIDTH, LABEL_HEIGHT, fill=1, stroke=0)
 
-    def draw_dashed_line(y_pos):
-        c.setStrokeColorRGB(0.5, 0.5, 0.5)
-        c.setLineWidth(0.8)
-        c.setDash([2, 2])
-        c.line(4 * mm, y_pos, w - 4 * mm, y_pos)
-        c.setDash([])
+    margin = 4 * mm
+    content_width = w - 2 * margin
 
-    # One adhesive label per luggage item.  No customer receipt is printed.
-    y = LABEL_HEIGHT - 4 * mm
+    def centered_fit(text: str, y_pos: float, *, size: float, font: str = "Helvetica-Bold") -> None:
+        """Draw centred text without letting a long code or name overflow."""
+        value = str(text or "—")
+        fitted_size = size
+        while fitted_size > 6 and pdfmetrics.stringWidth(value, font, fitted_size) > content_width:
+            fitted_size -= 0.5
+        c.setFont(font, fitted_size)
+        c.drawCentredString(w / 2, y_pos, value)
+
+    def separator(y_pos: float) -> None:
+        c.setStrokeColorRGB(0.75, 0.75, 0.75)
+        c.setLineWidth(0.45)
+        c.line(margin, y_pos, w - margin, y_pos)
+
+    # One adhesive label per luggage item. No customer receipt is printed.
+    y = LABEL_HEIGHT - 5 * mm
 
     # 1. HEADER (Logo & Brand)
     logo = settings.logo_path
     if logo.exists():
         try:
-            c.drawImage(str(logo), 4 * mm, y - 10 * mm, 12 * mm, 10 * mm, mask="auto")
+            c.drawImage(str(logo), margin, y - 10 * mm, 12 * mm, 10 * mm, mask="auto")
         except Exception:
             pass
 
     c.setFillColorRGB(0.05, 0.05, 0.05)
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(w - 4 * mm, y - 4 * mm, "NGOKAF LUGGAGE")
-    c.setFont("Helvetica", 6)
-    c.drawRightString(w - 4 * mm, y - 8 * mm, "ÉTIQUETTE À COLLER")
+    c.setFont("Helvetica-Bold", 9)
+    c.drawRightString(w - margin, y - 3.5 * mm, "NGOKAF TRANS")
+    c.setFont("Helvetica-Bold", 6.5)
+    c.drawRightString(w - margin, y - 7.5 * mm, "ÉTIQUETTE BAGAGE")
     y -= 12 * mm
 
-    draw_dashed_line(y)
-    y -= 4 * mm
+    # 2. Prominent, scan-friendly baggage code.
+    c.setStrokeColorRGB(0.05, 0.05, 0.05)
+    c.setLineWidth(1.2)
+    c.roundRect(margin, y - 17 * mm, content_width, 17 * mm, 2 * mm, fill=0, stroke=1)
+    c.setFillColorRGB(0.05, 0.05, 0.05)
+    c.setFont("Helvetica-Bold", 6.5)
+    c.drawCentredString(w / 2, y - 5 * mm, "CODE BAGAGE")
+    centered_fit(item.numero, y - 12.5 * mm, size=16)
+    y -= 21 * mm
 
-    # 2. LUGGAGE ID
-    c.setFont("Helvetica-Bold", 16)
-    c.drawCentredString(w / 2, y, item.numero)
-    y -= 5 * mm
-    draw_dashed_line(y)
-    y -= 4 * mm
-
-    # 3. DETAILS
-    def row(label: str, value: str, val_size=8, bold=True):
+    # 3. Details use a vertical hierarchy to keep every value readable.
+    def field(label: str, value: str, *, value_size: float = 9) -> None:
         nonlocal y
-        c.setFont("Helvetica", 6.5)
-        c.setFillColorRGB(0.3, 0.3, 0.3)
-        c.drawString(4 * mm, y, label)
-        c.setFont("Helvetica-Bold" if bold else "Helvetica", val_size)
+        c.setFillColorRGB(0.38, 0.38, 0.38)
+        c.setFont("Helvetica-Bold", 6)
+        c.drawCentredString(w / 2, y, label)
+        y -= 3.5 * mm
         c.setFillColorRGB(0.05, 0.05, 0.05)
-        c.drawRightString(w - 4 * mm, y, value)
-        y -= 5 * mm
+        centered_fit(value, y, size=value_size)
+        y -= 6 * mm
 
     route = getattr(item, "route_label", "") or ""
     if item.route:
         d = item.route.ville_depart.upper()
         a = item.route.ville_arrivee.upper()
         route = f"{d} ➔ {a}"
-    row("TRAJET", route, val_size=9)
-    row("BILLET", getattr(item, "ticket_numero", "") or "—", val_size=9)
+    field("PASSAGER", item.sender_name.upper(), value_size=10)
+    separator(y + 2 * mm)
+    y -= 2.5 * mm
+    field("TRAJET", route, value_size=9)
     bus_code = getattr(item, "bus_code", "") or (item.bus.code if item.bus else "")
-    row("BUS", bus_code or "—", val_size=8)
-
-    row("PASSAGER", item.sender_name.upper()[:16], val_size=8)
-
-    # Poids & Colis
-    row("POIDS", f"{float(item.poids):.1f} KG", val_size=9)
-
-    # Prix
-    row("TOTAL", f"{float(item.total):.0f} FC", val_size=10)
+    field("BUS", bus_code or "—", value_size=9)
+    field("BILLET", getattr(item, "ticket_numero", "") or "—", value_size=9)
+    field("POIDS", f"{float(item.poids):.1f} KG", value_size=9)
 
     # 4. FRAGILE ALERT
     if item.fragile:
@@ -115,20 +124,19 @@ def generate_luggage_label_pdf(item, path: Path | None = None) -> Path:
     else:
         y -= 2 * mm
 
-    draw_dashed_line(y)
+    separator(y)
     y -= 4 * mm
 
     # 5. BARCODE
     try:
         bc = _barcode_image(item.barcode)
-        c.drawImage(bc, 4 * mm, y - 12 * mm, w - 8 * mm, 12 * mm, mask="auto")
-        y -= 14 * mm
+        c.drawImage(bc, margin, y - 12 * mm, content_width, 12 * mm, mask="auto")
+        y -= 13.5 * mm
     except Exception:
         y -= 2 * mm
 
     c.setFillColorRGB(0.05, 0.05, 0.05)
-    c.setFont("Helvetica", 7)
-    c.drawCentredString(w / 2, y, item.barcode)
+    centered_fit(item.barcode, y, size=7, font="Helvetica")
     y -= 5 * mm
 
     # 6. FOOTER
@@ -139,7 +147,7 @@ def generate_luggage_label_pdf(item, path: Path | None = None) -> Path:
     c.drawCentredString(w / 2, y, f"DATE: {date_str} | TERMINAL: {terminal}")
 
     y -= 3 * mm
-    draw_dashed_line(y)
+    separator(y)
 
     c.save()
     return out
