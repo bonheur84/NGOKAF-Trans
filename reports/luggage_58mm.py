@@ -102,20 +102,20 @@ def generate_luggage_label_pdf(item, path: Path | None = None) -> Path:
         c.setFillColorRGB(0.05, 0.05, 0.05)
         c.setFont("Helvetica-Bold", fitted_size)
         c.drawRightString(w - margin, y, value)
-        y -= 5.5 * mm
-        separator(y + 1.5 * mm)
+        y -= 6 * mm
 
     route = getattr(item, "route_label", "") or ""
     if item.route:
         d = item.route.ville_depart.upper()
         a = item.route.ville_arrivee.upper()
         route = f"{d} ➔ {a}"
-    field("PASSAGER", item.sender_name.upper(), value_size=10)
-    field("TRAJET", route, value_size=9)
+    field("TRAJET", route.upper(), value_size=9)
+    field("BILLET", getattr(item, "ticket_numero", "") or "—", value_size=9)
     bus_code = getattr(item, "bus_code", "") or (item.bus.code if item.bus else "")
     field("BUS", bus_code or "—", value_size=9)
-    field("BILLET", getattr(item, "ticket_numero", "") or "—", value_size=9)
+    field("PASSAGER", item.sender_name.upper(), value_size=10)
     field("POIDS", f"{float(item.poids):.1f} KG", value_size=9)
+    field("TOTAL", f"{float(item.total):.0f} FC", value_size=10)
 
     # 4. FRAGILE ALERT
     if item.fragile:
