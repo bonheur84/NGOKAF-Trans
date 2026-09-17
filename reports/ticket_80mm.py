@@ -180,11 +180,11 @@ def generate_ticket_pdf(ticket, path: Path | None = None) -> Path:
     
     c.setFont("Helvetica", 7)
     c.setFillColorRGB(0.4, 0.4, 0.4)
-    c.drawString(4 * mm, y, "NET À PAYER")
+    c.drawCentredString(w / 2, y, "NET À PAYER")
     y -= 4 * mm
     c.setFont("Helvetica-Bold", 14)
     c.setFillColorRGB(0.05, 0.05, 0.05)
-    c.drawString(4 * mm, y, format_fc(ticket.price))
+    c.drawCentredString(w / 2, y, format_fc(ticket.price))
     y -= 6 * mm
 
     cashier_name = ticket.cashier.username if ticket.cashier else "Système"
